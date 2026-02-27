@@ -1,0 +1,40 @@
+# Rust
+server/target/
+server/hmi_data.db
+
+# Flutter
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/.metadata
+app/*.iml
+app/ios/Pods/
+app/ios/.symlinks/
+app/macos/Pods/
+app/macos/.symlinks/
+app/android/.gradle/
+app/android/local.properties
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Simulator (temporary, will be replaced by OPC UA)
+simulator/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (internal notes)
+*.md
+!README.md
