@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VYUH HMI — Batch Reactor Control</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ═══════════════════════════════════════════
+     VYUH HMI — INDUSTRIAL CONTROL DASHBOARD
+     Aesthetic: Refined Industrial Minimalism
+     Inspired by: Aviation cockpits, Dieter Rams
+     ═══════════════════════════════════════════ */
+
+  :root {
+    /* --- Surface System --- */
+    --bg-void: #0C0C0E;
+    --bg-base: #111114;
+    --bg-raised: #18181C;
+    --bg-overlay: #1F1F24;
+    --border-subtle: #2A2A30;
+    --border-focus: #3A3A42;
+
+    /* --- Text Hierarchy --- */
+    --text-primary: #EEEEF0;
+    --text-secondary: #8E8E96;
+    --text-tertiary: #5A5A62;
+
+    /* --- Functional Colors --- */
+    --accent: #E8763A;
+    --accent-dim: #E8763A33;
+    --accent-glow: #E8763A15;
+    --healthy: #3DD68C;
+    --healthy-dim: #3DD68C22;
+    --warning: #F0C040;
+    --warning-dim: #F0C04022;
+    --danger: #E84057;
+    --danger-dim: #E8405722;
+    --info: #5B9CF5;
+
+    /* --- Typography --- */
+    --font-display: 'Outfit', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+
+    /* --- Spacing --- */
+    --gap: 12px;
+    --radius: 8px;
+    --radius-sm: 5px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-void);
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* ═══ TEXTURE OVERLAY ═══ */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: 
+      radial-gradient(ellipse 80% 50% at 50% 0%, var(--accent-glow) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 80% 100%, #5B9CF508 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ═══ HEADER ═══ */
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    background: var(--bg-base);
+    border-bottom: 1px solid var(--border-subtle);
+    backdrop-filter: blur(20px);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent), #C45A2A);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: white;
+    letter-spacing: -0.5px;
+  }
+
+  .logo-text {
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    color: var(--text-primary);
+  }
+
+  .logo-text span {
+    color: var(--text-tertiary);
+    font-weight: 300;
+    margin-left: 6px;
+    font-size: 12px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    background: var(--bg-overlay);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--healthy);
+    box-shadow: 0 0 6px var(--healthy);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .status-dot.warning { background: var(--warning); box-shadow: 0 0 6px var(--warning); }
+  .status-dot.danger { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
+  /* ═══ BATCH STATE BANNER ═══ */
+  .batch-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 24px;
+    background: var(--bg-base);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .batch-state {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .state-badge {
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1.5px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+
+  .state-badge.cooling {
+    background: var(--info);
+    color: white;
+    border-color: var(--info);
+    background: #5B9CF522;
+    color: var(--info);
+    border-color: var(--info);
+  }
+
+  .batch-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .batch-label strong {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    max-width: 340px;
+  }
+
+  .progress-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--bg-overlay);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    width: 45%;
+    background: linear-gradient(90deg, var(--accent), #F0A040);
+    border-radius: 2px;
+    transition: width 0.5s ease;
+  }
+
+  .progress-text {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 32px;
+    text-align: right;
+  }
+
+  /* ═══ MAIN GRID ═══ */
+  .main {
+    position: relative;
+    z-index: 1;
+    padding: 16px 24px 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: var(--gap);
+    max-width: 1440px;
+    margin: 0 auto;
+  }
+
+  /* ═══ GAUGE CARD ═══ */
+  .gauge-card {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .gauge-card:hover {
+    border-color: var(--border-focus);
+    background: var(--bg-overlay);
+  }
+
+  .gauge-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .gauge-card:hover::after {
+    opacity: 1;
+  }
+
+  .gauge-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+
+  .gauge-ring {
+    position: relative;
+    width: 130px;
+    height: 130px;
+  }
+
+  .gauge-ring svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-135deg);
+  }
+
+  .gauge-track {
+    fill: none;
+    stroke: var(--bg-overlay);
+    stroke-width: 6;
+    stroke-linecap: round;
+  }
+
+  .gauge-fill {
+    fill: none;
+    stroke-width: 6;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+    filter: drop-shadow(0 0 4px var(--gauge-color));
+  }
+
+  .gauge-value {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .gauge-number {
+    font-family: var(--font-mono);
+    font-size: 32px;
+    font-weight: 400;
+    line-height: 1;
+    color: var(--text-primary);
+  }
+
+  .gauge-unit {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+  }
+
+  .gauge-range {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0 4px;
+  }
+
+  .gauge-range span {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  .gauge-status {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+
+  .gauge-status.normal {
+    background: var(--healthy-dim);
+    color: var(--healthy);
+  }
+
+  .gauge-status.warning {
+    background: var(--warning-dim);
+    color: var(--warning);
+  }
+
+  .gauge-status.danger {
+    background: var(--danger-dim);
+    color: var(--danger);
+  }
+
+  /* ═══ CHART AREA ═══ */
+  .chart-area {
+    grid-column: 1 / -1;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+  }
+
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .chart-title {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+  }
+
+  .chart-legend {
+    display: flex;
+    gap: 16px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 3px;
+    border-radius: 1px;
+  }
+
+  .chart-container {
+    width: 100%;
+    height: 200px;
+    position: relative;
+  }
+
+  .chart-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .chart-grid-line {
+    stroke: var(--border-subtle);
+    stroke-width: 0.5;
+    stroke-dasharray: 2 4;
+  }
+
+  .chart-line {
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .chart-area-fill {
+    opacity: 0.08;
+  }
+
+  .chart-x-label, .chart-y-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    fill: var(--text-tertiary);
+  }
+
+  /* ═══ STATS ROW ═══ */
+  .stats-row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--gap);
+  }
+
+  .stat-card {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .stat-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--text-primary);
+  }
+
+  .stat-unit {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-left: 2px;
+  }
+
+  .stat-sparkline {
+    width: 80px;
+    height: 32px;
+  }
+
+  .sparkline-path {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+
+  /* ═══ TIMESTAMP FOOTER ═══ */
+  .footer {
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    border-top: 1px solid var(--border-subtle);
+    background: var(--bg-base);
+  }
+
+  .footer-live {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .live-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--danger);
+    animation: pulse-dot 1s ease-in-out infinite;
+  }
+
+  /* ═══ STAGGER ANIMATION ═══ */
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .gauge-card, .chart-area, .stat-card {
+    animation: fadeSlideUp 0.5s ease-out both;
+  }
+
+  .gauge-card:nth-child(1) { animation-delay: 0.05s; }
+  .gauge-card:nth-child(2) { animation-delay: 0.1s; }
+  .gauge-card:nth-child(3) { animation-delay: 0.15s; }
+  .gauge-card:nth-child(4) { animation-delay: 0.2s; }
+  .chart-area { animation-delay: 0.3s; }
+  .stats-row .stat-card:nth-child(1) { animation-delay: 0.35s; }
+  .stats-row .stat-card:nth-child(2) { animation-delay: 0.4s; }
+  .stats-row .stat-card:nth-child(3) { animation-delay: 0.45s; }
+  .stats-row .stat-card:nth-child(4) { animation-delay: 0.5s; }
+
+  /* ═══ RESPONSIVE ═══ */
+  @media (max-width: 768px) {
+    .main {
+      grid-template-columns: 1fr 1fr;
+      padding: 12px 16px 16px;
+    }
+    .stats-row {
+      grid-template-columns: 1fr 1fr;
+    }
+    .header { padding: 12px 16px; }
+    .batch-banner { padding: 8px 16px; flex-wrap: wrap; gap: 8px; }
+    .progress-wrap { max-width: 100%; }
+    .gauge-number { font-size: 26px; }
+    .gauge-ring { width: 100px; height: 100px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-mark">V</div>
+    <div class="logo-text">VYUH<span>HMI</span></div>
+  </div>
+  <div class="header-right">
+    <div class="status-pill">
+      <div class="status-dot"></div>
+      Server
+    </div>
+    <div class="status-pill">
+      <div class="status-dot"></div>
+      PLC-01
+    </div>
+    <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary);">
+      04:18:22 UTC
+    </div>
+  </div>
+</header>
+
+<!-- ═══ BATCH STATE BANNER ═══ -->
+<div class="batch-banner">
+  <div class="batch-state">
+    <div class="state-badge">HEATING</div>
+    <div class="batch-label">Batch <strong>#2026-0228-A</strong></div>
+  </div>
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-fill"></div></div>
+    <div class="progress-text">45%</div>
+  </div>
+</div>
+
+<!-- ═══ MAIN DASHBOARD ═══ -->
+<main class="main">
+
+  <!-- GAUGE: Temperature -->
+  <div class="gauge-card">
+    <div class="gauge-label">TEMPERATURE</div>
+    <div class="gauge-ring" style="--gauge-color: var(--accent);">
+      <svg viewBox="0 0 120 120">
+        <circle class="gauge-track" cx="60" cy="60" r="52" stroke-dasharray="245" stroke-dashoffset="0" pathLength="360" />
+        <circle class="gauge-fill" cx="60" cy="60" r="52" stroke="var(--accent)" stroke-dasharray="245" stroke-dashoffset="87" pathLength="360" style="--gauge-color: var(--accent);" />
+      </svg>
+      <div class="gauge-value">
+        <div class="gauge-number">78</div>
+        <div class="gauge-unit">°C</div>
+      </div>
+    </div>
+    <div class="gauge-range">
+      <span>0</span>
+      <span class="gauge-status warning">RISING</span>
+      <span>120</span>
+    </div>
+  </div>
+
+  <!-- GAUGE: Pressure -->
+  <div class="gauge-card">
+    <div class="gauge-label">PRESSURE</div>
+    <div class="gauge-ring" style="--gauge-color: var(--info);">
+      <svg viewBox="0 0 120 120">
+        <circle class="gauge-track" cx="60" cy="60" r="52" stroke-dasharray="245" stroke-dashoffset="0" pathLength="360" />
+        <circle class="gauge-fill" cx="60" cy="60" r="52" stroke="var(--info)" stroke-dasharray="245" stroke-dashoffset="92" pathLength="360" style="--gauge-color: var(--info);" />
+      </svg>
+      <div class="gauge-value">
+        <div class="gauge-number">1250</div>
+        <div class="gauge-unit">mbar</div>
+      </div>
+    </div>
+    <div class="gauge-range">
+      <span>0</span>
+      <span class="gauge-status normal">NORMAL</span>
+      <span>2000</span>
+    </div>
+  </div>
+
+  <!-- GAUGE: Humidity -->
+  <div class="gauge-card">
+    <div class="gauge-label">HUMIDITY</div>
+    <div class="gauge-ring" style="--gauge-color: var(--healthy);">
+      <svg viewBox="0 0 120 120">
+        <circle class="gauge-track" cx="60" cy="60" r="52" stroke-dasharray="245" stroke-dashoffset="0" pathLength="360" />
+        <circle class="gauge-fill" cx="60" cy="60" r="52" stroke="var(--healthy)" stroke-dasharray="245" stroke-dashoffset="112" pathLength="360" style="--gauge-color: var(--healthy);" />
+      </svg>
+      <div class="gauge-value">
+        <div class="gauge-number">54</div>
+        <div class="gauge-unit">%RH</div>
+      </div>
+    </div>
+    <div class="gauge-range">
+      <span>0</span>
+      <span class="gauge-status normal">NORMAL</span>
+      <span>100</span>
+    </div>
+  </div>
+
+  <!-- GAUGE: pH -->
+  <div class="gauge-card">
+    <div class="gauge-label">pH LEVEL</div>
+    <div class="gauge-ring" style="--gauge-color: var(--healthy);">
+      <svg viewBox="0 0 120 120">
+        <circle class="gauge-track" cx="60" cy="60" r="52" stroke-dasharray="245" stroke-dashoffset="0" pathLength="360" />
+        <circle class="gauge-fill" cx="60" cy="60" r="52" stroke="var(--healthy)" stroke-dasharray="245" stroke-dashoffset="131" pathLength="360" style="--gauge-color: var(--healthy);" />
+      </svg>
+      <div class="gauge-value">
+        <div class="gauge-number">6.5</div>
+        <div class="gauge-unit">pH</div>
+      </div>
+    </div>
+    <div class="gauge-range">
+      <span>0</span>
+      <span class="gauge-status normal">OPTIMAL</span>
+      <span>14</span>
+    </div>
+  </div>
+
+  <!-- ═══ TEMPERATURE TREND CHART ═══ -->
+  <div class="chart-area">
+    <div class="chart-header">
+      <div class="chart-title">TEMPERATURE TREND — LAST 60s</div>
+      <div class="chart-legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background: var(--accent);"></div>
+          Actual
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: var(--text-tertiary);"></div>
+          Setpoint 80°C
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: var(--danger);"></div>
+          Limit 95°C
+        </div>
+      </div>
+    </div>
+    <div class="chart-container">
+      <svg class="chart-svg" viewBox="0 0 900 200" preserveAspectRatio="none">
+        <!-- Y-axis grid -->
+        <line class="chart-grid-line" x1="40" y1="20" x2="880" y2="20" />
+        <line class="chart-grid-line" x1="40" y1="65" x2="880" y2="65" />
+        <line class="chart-grid-line" x1="40" y1="110" x2="880" y2="110" />
+        <line class="chart-grid-line" x1="40" y1="155" x2="880" y2="155" />
+
+        <!-- Y labels -->
+        <text class="chart-y-label" x="32" y="24" text-anchor="end">120</text>
+        <text class="chart-y-label" x="32" y="69" text-anchor="end">90</text>
+        <text class="chart-y-label" x="32" y="114" text-anchor="end">60</text>
+        <text class="chart-y-label" x="32" y="159" text-anchor="end">30</text>
+
+        <!-- Setpoint line (80°C) -->
+        <line x1="40" y1="80" x2="880" y2="80" stroke="var(--text-tertiary)" stroke-width="1" stroke-dasharray="6 4" opacity="0.4" />
+
+        <!-- Limit line (95°C) -->
+        <line x1="40" y1="50" x2="880" y2="50" stroke="var(--danger)" stroke-width="1" stroke-dasharray="3 3" opacity="0.3" />
+
+        <!-- Area fill under curve -->
+        <path class="chart-area-fill" d="M40,155 L80,152 120,148 160,142 200,135 240,128 280,120 320,115 360,110 400,108 440,105 480,102 520,98 560,94 600,90 640,87 680,84 720,82 760,80 800,78 840,76 880,75 L880,180 L40,180 Z" fill="var(--accent)" />
+
+        <!-- Temperature line -->
+        <path class="chart-line" d="M40,155 L80,152 120,148 160,142 200,135 240,128 280,120 320,115 360,110 400,108 440,105 480,102 520,98 560,94 600,90 640,87 680,84 720,82 760,80 800,78 840,76 880,75" stroke="var(--accent)" />
+
+        <!-- Current value dot -->
+        <circle cx="880" cy="75" r="4" fill="var(--accent)" />
+        <circle cx="880" cy="75" r="7" fill="none" stroke="var(--accent)" stroke-width="1" opacity="0.4">
+          <animate attributeName="r" from="4" to="12" dur="1.5s" repeatCount="indefinite" />
+          <animate attributeName="opacity" from="0.4" to="0" dur="1.5s" repeatCount="indefinite" />
+        </circle>
+
+        <!-- X labels -->
+        <text class="chart-x-label" x="40" y="195" text-anchor="start">-60s</text>
+        <text class="chart-x-label" x="250" y="195" text-anchor="middle">-45s</text>
+        <text class="chart-x-label" x="460" y="195" text-anchor="middle">-30s</text>
+        <text class="chart-x-label" x="670" y="195" text-anchor="middle">-15s</text>
+        <text class="chart-x-label" x="880" y="195" text-anchor="end">now</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ═══ STATS ROW ═══ -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-info">
+        <div class="stat-label">FLOW RATE</div>
+        <div class="stat-value">15.2<span class="stat-unit">L/min</span></div>
+      </div>
+      <svg class="stat-sparkline" viewBox="0 0 80 32">
+        <path class="sparkline-path" stroke="var(--healthy)" d="M0,20 L8,18 16,22 24,16 32,19 40,14 48,17 56,15 64,16 72,14 80,15" />
+      </svg>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-info">
+        <div class="stat-label">AGITATOR</div>
+        <div class="stat-value">200<span class="stat-unit">RPM</span></div>
+      </div>
+      <svg class="stat-sparkline" viewBox="0 0 80 32">
+        <path class="sparkline-path" stroke="var(--info)" d="M0,16 L8,14 16,18 24,15 32,16 40,13 48,17 56,14 64,16 72,15 80,14" />
+      </svg>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-info">
+        <div class="stat-label">BATCH TIME</div>
+        <div class="stat-value" style="font-size: 18px;">00:27:14</div>
+      </div>
+      <div style="font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary);">
+        ETA 00:33:46
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-info">
+        <div class="stat-label">NEXT PHASE</div>
+        <div class="stat-value" style="font-size: 14px; color: var(--info); letter-spacing: 1px;">HOLDING</div>
+      </div>
+      <div style="font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary);">
+        at 80°C
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ═══ FOOTER ═══ -->
+<footer class="footer">
+  <div class="footer-live">
+    <div class="live-dot"></div>
+    LIVE — 1 Hz polling
+  </div>
+  <div>Modbus TCP · 127.0.0.1:5020 · 8 registers</div>
+  <div>VYUH HMI v0.1.0</div>
+</footer>
+
+<!-- ═══ LIVE VALUE ANIMATION ═══ -->
+<script>
+  // Simulate live gauge updates
+  const gaugeNumbers = document.querySelectorAll('.gauge-number');
+  const baseValues = [78, 1250, 54, 6.5];
+  
+  setInterval(() => {
+    gaugeNumbers.forEach((el, i) => {
+      const noise = (Math.random() - 0.5) * (i === 1 ? 20 : i === 3 ? 0.2 : 2);
+      const val = baseValues[i] + noise;
+      el.textContent = i === 3 ? val.toFixed(1) : Math.round(val);
+    });
+    
+    // Update clock
+    const now = new Date();
+    const timeStr = now.toUTCString().slice(-12, -4);
+    document.querySelector('.header-right > div:last-child').textContent = timeStr + ' UTC';
+  }, 1000);
+</script>
+
+</body>
+</html>
