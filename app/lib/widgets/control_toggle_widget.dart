@@ -353,11 +353,13 @@ class AgitatorSliderWidget extends StatefulWidget {
 class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
   double _sliderValue = 200;
   bool _isDragging = false;
+  bool _hasPendingValue = false;
 
   @override
   void didUpdateWidget(AgitatorSliderWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_isDragging) {
+    // Only sync slider to live value when user isn't interacting.
+    if (!_isDragging && !_hasPendingValue) {
       _sliderValue = widget.currentRpm.clamp(0, 500);
     }
   }
@@ -445,7 +447,10 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
               label: '${_sliderValue.toInt()} RPM',
               onChangeStart: (_) => _isDragging = true,
               onChanged: (v) => setState(() => _sliderValue = v),
-              onChangeEnd: (_) => _isDragging = false,
+              onChangeEnd: (_) => setState(() {
+                _isDragging = false;
+                _hasPendingValue = true;
+              }),
             ),
           ),
           const SizedBox(height: 8),
@@ -457,7 +462,10 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
                   label: 'SET ${_sliderValue.toInt()} RPM',
                   color: HmiColors.warning,
                   isLoading: widget.isLoading,
-                  onPressed: () => widget.onSetRpm(_sliderValue.toInt()),
+                  onPressed: () {
+                    _hasPendingValue = false;
+                    widget.onSetRpm(_sliderValue.toInt());
+                  },
                 ),
               ),
               if (widget.isOverridden) ...[
@@ -466,7 +474,10 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
                   label: 'AUTO',
                   color: HmiColors.textMuted,
                   isLoading: widget.isLoading,
-                  onPressed: widget.onClearOverride,
+                  onPressed: () {
+                    _hasPendingValue = false;
+                    widget.onClearOverride();
+                  },
                 ),
               ],
             ],

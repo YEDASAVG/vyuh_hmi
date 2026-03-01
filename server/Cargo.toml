@@ -18,3 +18,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 futures = "0.3"
 rand = "0.10.0"
+
+# config + protocol abstraction
+toml = "0.8"
+async-trait = "0.1"

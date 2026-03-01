@@ -31,3 +31,23 @@ pub struct WriteRequest {
     pub register: u16,
     pub value: u16,
 }
+
+/// Request to add a new device at runtime (POST /api/devices).
+#[derive(Debug, Deserialize)]
+pub struct AddDeviceRequest {
+    pub id: String,
+    pub name: String,
+    pub address: String,
+    pub protocol: String,
+    pub poll_rate_ms: Option<u64>,
+    pub register_start: u16,
+    pub register_count: u16,
+    pub writable: Vec<u16>,
+}
+
+/// Optional body for POST /api/discover — custom targets/ports.
+#[derive(Debug, Deserialize)]
+pub struct ScanRequest {
+    pub targets: Option<Vec<String>>,
+    pub ports: Option<Vec<u16>>,
+}

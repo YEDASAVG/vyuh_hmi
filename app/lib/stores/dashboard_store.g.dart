@@ -240,6 +240,82 @@ mixin _$DashboardStore on _DashboardStore, Store {
     });
   }
 
+  late final _$isWritingAtom = Atom(
+    name: '_DashboardStore.isWriting',
+    context: context,
+  );
+
+  @override
+  bool get isWriting {
+    _$isWritingAtom.reportRead();
+    return super.isWriting;
+  }
+
+  @override
+  set isWriting(bool value) {
+    _$isWritingAtom.reportWrite(value, super.isWriting, () {
+      super.isWriting = value;
+    });
+  }
+
+  late final _$agitatorOverrideActiveAtom = Atom(
+    name: '_DashboardStore.agitatorOverrideActive',
+    context: context,
+  );
+
+  @override
+  bool get agitatorOverrideActive {
+    _$agitatorOverrideActiveAtom.reportRead();
+    return super.agitatorOverrideActive;
+  }
+
+  @override
+  set agitatorOverrideActive(bool value) {
+    _$agitatorOverrideActiveAtom.reportWrite(
+      value,
+      super.agitatorOverrideActive,
+      () {
+        super.agitatorOverrideActive = value;
+      },
+    );
+  }
+
+  late final _$lastWriteErrorAtom = Atom(
+    name: '_DashboardStore.lastWriteError',
+    context: context,
+  );
+
+  @override
+  String? get lastWriteError {
+    _$lastWriteErrorAtom.reportRead();
+    return super.lastWriteError;
+  }
+
+  @override
+  set lastWriteError(String? value) {
+    _$lastWriteErrorAtom.reportWrite(value, super.lastWriteError, () {
+      super.lastWriteError = value;
+    });
+  }
+
+  late final _$activeAlarmsAtom = Atom(
+    name: '_DashboardStore.activeAlarms',
+    context: context,
+  );
+
+  @override
+  ObservableList<Alarm> get activeAlarms {
+    _$activeAlarmsAtom.reportRead();
+    return super.activeAlarms;
+  }
+
+  @override
+  set activeAlarms(ObservableList<Alarm> value) {
+    _$activeAlarmsAtom.reportWrite(value, super.activeAlarms, () {
+      super.activeAlarms = value;
+    });
+  }
+
   late final _$initAsyncAction = AsyncAction(
     '_DashboardStore.init',
     context: context,
@@ -248,6 +324,50 @@ mixin _$DashboardStore on _DashboardStore, Store {
   @override
   Future<void> init() {
     return _$initAsyncAction.run(() => super.init());
+  }
+
+  late final _$writeRegisterAsyncAction = AsyncAction(
+    '_DashboardStore.writeRegister',
+    context: context,
+  );
+
+  @override
+  Future<bool> writeRegister({required int register, required int value}) {
+    return _$writeRegisterAsyncAction.run(
+      () => super.writeRegister(register: register, value: value),
+    );
+  }
+
+  late final _$emergencyStopAsyncAction = AsyncAction(
+    '_DashboardStore.emergencyStop',
+    context: context,
+  );
+
+  @override
+  Future<bool> emergencyStop() {
+    return _$emergencyStopAsyncAction.run(() => super.emergencyStop());
+  }
+
+  late final _$setAgitatorRpmAsyncAction = AsyncAction(
+    '_DashboardStore.setAgitatorRpm',
+    context: context,
+  );
+
+  @override
+  Future<bool> setAgitatorRpm(int rpm) {
+    return _$setAgitatorRpmAsyncAction.run(() => super.setAgitatorRpm(rpm));
+  }
+
+  late final _$clearAgitatorOverrideAsyncAction = AsyncAction(
+    '_DashboardStore.clearAgitatorOverride',
+    context: context,
+  );
+
+  @override
+  Future<bool> clearAgitatorOverride() {
+    return _$clearAgitatorOverrideAsyncAction.run(
+      () => super.clearAgitatorOverride(),
+    );
   }
 
   late final _$fetchHistoryAsyncAction = AsyncAction(
@@ -295,6 +415,30 @@ mixin _$DashboardStore on _DashboardStore, Store {
   }
 
   @override
+  void _checkAlarms() {
+    final _$actionInfo = _$_DashboardStoreActionController.startAction(
+      name: '_DashboardStore._checkAlarms',
+    );
+    try {
+      return super._checkAlarms();
+    } finally {
+      _$_DashboardStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
+  @override
+  void dismissAlarm(String alarmId) {
+    final _$actionInfo = _$_DashboardStoreActionController.startAction(
+      name: '_DashboardStore.dismissAlarm',
+    );
+    try {
+      return super.dismissAlarm(alarmId);
+    } finally {
+      _$_DashboardStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
+  @override
   String toString() {
     return '''
 isServerConnected: ${isServerConnected},
@@ -309,7 +453,11 @@ pressure: ${pressure},
 humidity: ${humidity},
 flowRate: ${flowRate},
 agitatorSpeed: ${agitatorSpeed},
-pH: ${pH}
+pH: ${pH},
+isWriting: ${isWriting},
+agitatorOverrideActive: ${agitatorOverrideActive},
+lastWriteError: ${lastWriteError},
+activeAlarms: ${activeAlarms}
     ''';
   }
 }

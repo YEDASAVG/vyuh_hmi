@@ -1,0 +1,33 @@
+# Vyuh HMI Server Configuration
+# Change this file to connect to different PLCs — zero code changes.
+
+[server]
+host = "0.0.0.0"
+port = 3000
+
+[database]
+path = "hmi_data.db"
+
+# ── Device List ──────────────────────────────────────────────────
+# Each [[devices]] block spawns its own polling task + write channel.
+# Add/remove devices here, or use POST /api/devices at runtime.
+
+[[devices]]
+id = "plc-01"
+name = "Batch Reactor"
+address = "127.0.0.1:5020"
+protocol = "modbus"
+poll_rate_ms = 1000
+register_start = 1028
+register_count = 8
+writable = [1032, 1034]
+
+[[devices]]
+id = "plc-02"
+name = "Cooling Tower"
+address = "127.0.0.1:5021"
+protocol = "modbus"
+poll_rate_ms = 1000
+register_start = 1028
+register_count = 8
+writable = [1032, 1034]

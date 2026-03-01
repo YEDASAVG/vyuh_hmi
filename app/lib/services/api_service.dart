@@ -99,4 +99,85 @@ class ApiService {
       return false;
     }
   }
+
+  /// POST /api/discover — scan network for Modbus devices.
+  Future<List<Map<String, dynamic>>> discoverDevices() async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/discover'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(null),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        if (body['success'] == true && body['data'] != null) {
+          return (body['data'] as List).cast<Map<String, dynamic>>();
+        }
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// POST /api/devices — add a new device at runtime.
+  Future<PlcDevice?> addDevice({
+    required String id,
+    required String name,
+    required String address,
+    String protocol = 'modbus',
+    int pollRateMs = 1000,
+    int registerStart = 1028,
+    int registerCount = 8,
+    List<int> writable = const [1032, 1034],
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/devices'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'id': id,
+              'name': name,
+              'address': address,
+              'protocol': protocol,
+              'poll_rate_ms': pollRateMs,
+              'register_start': registerStart,
+              'register_count': registerCount,
+              'writable': writable,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        if (body['success'] == true && body['data'] != null) {
+          return PlcDevice.fromJson(body['data'] as Map<String, dynamic>);
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// DELETE /api/devices/:id — remove a device.
+  Future<bool> removeDevice(String deviceId) async {
+    try {
+      final response = await http
+          .delete(Uri.parse('$baseUrl/api/devices/$deviceId'))
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        return body['success'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
 }

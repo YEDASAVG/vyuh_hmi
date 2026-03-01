@@ -1,0 +1,55 @@
+{
+  "id": "chemical-plant",
+  "name": "Chemical Processing Plant",
+  "version": "1.0",
+  "server": {
+    "httpUrl": "http://127.0.0.1:3000",
+    "wsUrl": "ws://127.0.0.1:3000/ws"
+  },
+  "device": {
+    "id": "plc-01"
+  },
+  "theme": {
+    "accent": "#00ACC1",
+    "background": "#0A0E12",
+    "surface": "#121A22",
+    "surfaceBorder": "#1E2E3A",
+    "healthy": "#66BB6A",
+    "warning": "#FFA726",
+    "danger": "#EF5350",
+    "info": "#42A5F5"
+  },
+  "registers": [
+    {"address": 1028, "key": "temperature", "label": "Reactor Temp", "unit": "°C", "color": "#EF5350"},
+    {"address": 1029, "key": "pressure",    "label": "Vessel PSI",  "unit": "PSI", "color": "#42A5F5"},
+    {"address": 1030, "key": "humidity",    "label": "Ambient RH",  "unit": "%",   "color": "#26C6DA"},
+    {"address": 1031, "key": "flowRate",    "label": "Inlet Flow",  "unit": "GPM", "color": "#66BB6A"},
+    {"address": 1032, "key": "batchState",  "label": "Process State","unit": "",    "color": "#00ACC1", "type": "batch_state"},
+    {"address": 1033, "key": "batchProgress","label": "Completion",  "unit": "%",   "color": "#00ACC1", "type": "progress"},
+    {"address": 1034, "key": "agitatorSpeed","label": "Mixer RPM",  "unit": "RPM", "color": "#FFA726", "writable": true},
+    {"address": 1035, "key": "pH",          "label": "pH Sensor",   "unit": "",    "color": "#AB47BC", "divisor": 10}
+  ],
+  "alarms": [
+    {"register": 1028, "label": "Reactor Temp", "warnHigh": 90, "critHigh": 110},
+    {"register": 1029, "label": "Vessel PSI",   "warnHigh": 1100, "critHigh": 1300},
+    {"register": 1035, "label": "pH Sensor",    "warnLow": 60, "critLow": 45, "warnHigh": 80, "critHigh": 95}
+  ],
+  "dashboard": {
+    "gauge": {
+      "registerKey": "pressure",
+      "max": 1600,
+      "warningThreshold": 1100,
+      "dangerThreshold": 1300
+    },
+    "batchState": {
+      "stateRegisterKey": "batchState",
+      "progressRegisterKey": "batchProgress"
+    },
+    "statCards": ["temperature", "pressure", "flowRate", "agitatorSpeed", "pH", "humidity"],
+    "charts": ["temperature", "pressure", "flowRate"],
+    "controls": {
+      "emergencyStop": {"register": 1032, "stopValue": 0, "restartValue": 1},
+      "agitator": {"register": 1034, "min": 0, "max": 600}
+    }
+  }
+}

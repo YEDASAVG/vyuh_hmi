@@ -1,0 +1,55 @@
+{
+  "id": "pharma-reactor",
+  "name": "Pharma Batch Reactor",
+  "version": "1.0",
+  "server": {
+    "httpUrl": "http://127.0.0.1:3000",
+    "wsUrl": "ws://127.0.0.1:3000/ws"
+  },
+  "device": {
+    "id": "plc-01"
+  },
+  "theme": {
+    "accent": "#E8763A",
+    "background": "#0C0C0E",
+    "surface": "#18181C",
+    "surfaceBorder": "#2A2A32",
+    "healthy": "#3DD68C",
+    "warning": "#E8B63A",
+    "danger": "#E84057",
+    "info": "#5B9CF5"
+  },
+  "registers": [
+    {"address": 1028, "key": "temperature", "label": "Temperature", "unit": "°C", "color": "#E8763A"},
+    {"address": 1029, "key": "pressure",    "label": "Pressure",    "unit": "mbar", "color": "#5B9CF5"},
+    {"address": 1030, "key": "humidity",    "label": "Humidity",    "unit": "%",    "color": "#00BCD4"},
+    {"address": 1031, "key": "flowRate",    "label": "Flow Rate",   "unit": "L/min","color": "#3DD68C"},
+    {"address": 1032, "key": "batchState",  "label": "Batch State", "unit": "",     "color": "#E8763A", "type": "batch_state"},
+    {"address": 1033, "key": "batchProgress","label": "Progress",   "unit": "%",    "color": "#E8763A", "type": "progress"},
+    {"address": 1034, "key": "agitatorSpeed","label": "Agitator",   "unit": "RPM",  "color": "#E8B63A", "writable": true},
+    {"address": 1035, "key": "pH",          "label": "pH Level",    "unit": "",     "color": "#9C27B0", "divisor": 10}
+  ],
+  "alarms": [
+    {"register": 1028, "label": "Temperature", "warnHigh": 85, "critHigh": 100},
+    {"register": 1029, "label": "Pressure",    "warnHigh": 1200, "critHigh": 1400},
+    {"register": 1035, "label": "pH Level",    "warnLow": 55, "critLow": 50, "warnHigh": 85, "critHigh": 90}
+  ],
+  "dashboard": {
+    "gauge": {
+      "registerKey": "temperature",
+      "max": 120,
+      "warningThreshold": 80,
+      "dangerThreshold": 100
+    },
+    "batchState": {
+      "stateRegisterKey": "batchState",
+      "progressRegisterKey": "batchProgress"
+    },
+    "statCards": ["temperature", "pressure", "humidity", "flowRate", "agitatorSpeed", "pH"],
+    "charts": ["temperature", "pressure", "flowRate"],
+    "controls": {
+      "emergencyStop": {"register": 1032, "stopValue": 0, "restartValue": 1},
+      "agitator": {"register": 1034, "min": 0, "max": 500}
+    }
+  }
+}
