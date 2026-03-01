@@ -2,12 +2,11 @@ use axum::{
     Json,
     extract::{Query, State},
 };
-
 use serde::Deserialize;
 
 use crate::db;
-use crate::models::{ApiResponse, PlcData, PlcDevice};
-use crate::state::AppState;
+use crate::models::{ApiResponse, PlcData, PlcDevice, WriteRequest};
+use crate::state::{AppState, WriteCommand};
 
 // query param for history endpoint
 #[derive(Deserialize)]
@@ -42,5 +41,62 @@ pub async fn get_history(
     let limit = params.limit.unwrap_or(100);
     let history = db::get_history(&state.db, &params.device_id, limit).await;
 
-    Json(ApiResponse { success: true, data: Some(history), error: None })
+    Json(ApiResponse {
+        success: true,
+        data: Some(history),
+        error: None,
+    })
+}
+
+// post write handler
+
+pub async fn post_write(
+    State(state): State<AppState>,
+    Json(req): Json<WriteRequest>,
+) -> Json<ApiResponse<String>> {
+    // validation
+    let writable_registers: Vec<u16> = vec![1032, 1034]; // batch state, agitator
+    if !writable_registers.contains(&req.register) {
+        return Json(ApiResponse {
+            success: false,
+            data: None,
+            error: Some(format!("Register {} is not writable", req.register)),
+        });
+    }
+
+    // send write command to modbus task
+    let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+    let cmd = WriteCommand {
+        register: req.register,
+        value: req.value,
+        response: resp_tx,
+    };
+
+    // send through mpsc channel to the modbus polling task
+    if let Err(e) = state.write_tx.send(cmd).await {
+        return Json(ApiResponse {
+            success: false,
+            data: None,
+            error: Some(format!("Failed to queue write command: {}", e)),
+        });
+    }
+
+    // await the result from the modbus task
+    match resp_rx.await {
+        Ok(Ok(())) => Json(ApiResponse {
+            success: true,
+            data: Some(format!("Register {} set to {}", req.register, req.value)),
+            error: None,
+        }),
+        Ok(Err(e)) => Json(ApiResponse {
+            success: false,
+            data: None,
+            error: Some(format!("Modbus write failed: {}", e)),
+        }),
+        Err(_) => Json(ApiResponse {
+            success: false,
+            data: None,
+            error: Some("Write command response channel dropped".to_string()),
+        }),
+    }
 }

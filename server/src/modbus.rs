@@ -2,18 +2,24 @@ use chrono::Utc;
 use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use std::time::Duration;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tokio_modbus::client::tcp;
 use tokio_modbus::prelude::*;
 use tracing::{error, info, warn};
 
 use crate::db;
 use crate::models::PlcData;
+use crate::state::WriteCommand;
 
 // start background polling task
 // connect to PLC via modbus TCP reads registers every sec
 
-pub fn start_polling(tx: broadcast::Sender<String>, db: SqlitePool, address: String) {
+pub fn start_polling(
+    tx: broadcast::Sender<String>,
+    db: SqlitePool,
+    address: String,
+    mut write_rx: mpsc::Receiver<WriteCommand>,
+) {
     tokio::spawn(async move {
         info!("Modbus polling task started for {}", address);
         let socket_addr: SocketAddr = address.parse().expect("Invalid PLC address");
@@ -27,10 +33,31 @@ pub fn start_polling(tx: broadcast::Sender<String>, db: SqlitePool, address: Str
                     info!("Connected to PLC at {}", address);
                     let mut interval = tokio::time::interval(Duration::from_secs(1));
 
-                    // poll loop - reads registers every second
+                    // poll loop - reads registers every second, also handles write commands
                     loop {
-                        interval.tick().await;
-                        // Read 4 registers starting at 1028
+                        tokio::select! {
+                            // Handle write commands from the API
+                            Some(cmd) = write_rx.recv() => {
+                                info!("Writing register {} = {}", cmd.register, cmd.value);
+                                match ctx.write_single_register(cmd.register, cmd.value).await {
+                                    Ok(Ok(())) => {
+                                        info!("Write successful: reg {} = {}", cmd.register, cmd.value);
+                                        let _ = cmd.response.send(Ok(()));
+                                    }
+                                    Ok(Err(e)) => {
+                                        error!("Modbus write exception: {:?}", e);
+                                        let _ = cmd.response.send(Err(format!("Modbus exception: {:?}", e)));
+                                    }
+                                    Err(e) => {
+                                        error!("Write failed: {}", e);
+                                        let _ = cmd.response.send(Err(format!("Write failed: {}", e)));
+                                        break; // connection lost, reconnect
+                                    }
+                                }
+                            }
+                            // Regular polling tick
+                            _ = interval.tick() => {
+                        // Read 8 registers starting at 1028
                         match ctx.read_holding_registers(1028, 8).await {
                             Ok(Ok(registers)) => {
                                 // registers[0]=temp, [1]=pressure, [2]=humidity, [3]=flow
@@ -78,7 +105,9 @@ pub fn start_polling(tx: broadcast::Sender<String>, db: SqlitePool, address: Str
                                 break; // exit poll loop -> reconnect
                             }
                         }
-                    }
+                            } // end _ = interval.tick()
+                        } // end tokio::select!
+                    } // end loop
                 }
                 Err(e) => {
                     warn!("Failed to connect to PLC: {}", e);

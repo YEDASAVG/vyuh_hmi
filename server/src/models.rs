@@ -24,3 +24,10 @@ pub struct ApiResponse<T: Serialize> { // Standard API response wrapper
     pub data: Option<T>,
     pub error: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct WriteRequest {
+    pub device_id: String,
+    pub register: u16,
+    pub value: u16,
+}

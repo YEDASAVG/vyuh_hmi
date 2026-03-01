@@ -64,4 +64,39 @@ class ApiService {
       return false;
     }
   }
+
+  /// POST /api/write — write a value to a PLC register.
+  ///
+  /// Used for bidirectional control (Phase 4):
+  ///   - Register 1032: Batch State (write 0 = emergency stop → IDLE)
+  ///   - Register 1034: Agitator Speed (operator override RPM)
+  ///
+  /// Returns `true` if server confirms write success.
+  Future<bool> writeRegister({
+    required String deviceId,
+    required int register,
+    required int value,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/write'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'device_id': deviceId,
+              'register': register,
+              'value': value,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        return body['success'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
 }
