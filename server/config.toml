@@ -31,3 +31,13 @@ poll_rate_ms = 1000
 register_start = 1028
 register_count = 8
 writable = [1032, 1034]
+
+[[devices]]
+id = "plc-03"
+name = "Sterile Filling Line"
+address = "opc.tcp://127.0.0.1:4840/"
+protocol = "opcua"
+poll_rate_ms = 1000
+register_start = 1028
+register_count = 8
+writable = [1032, 1034]

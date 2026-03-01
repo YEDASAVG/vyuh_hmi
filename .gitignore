@@ -38,3 +38,7 @@ Thumbs.db
 # Documentation (internal notes)
 *.md
 !README.md
+
+opcua-pki*/
+*.pem
+*.der

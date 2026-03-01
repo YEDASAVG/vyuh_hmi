@@ -10,6 +10,7 @@ use crate::config::DeviceConfig;
 use crate::db;
 use crate::discovery;
 use crate::modbus::ModbusClient;
+use crate::opcua_client::OpcUaClient;
 use crate::models::{AddDeviceRequest, ApiResponse, PlcData, PlcDevice, ScanRequest, WriteRequest};
 use crate::protocol;
 use crate::state::{AppState, DeviceHandle, WriteCommand};
@@ -75,6 +76,7 @@ pub async fn add_device(
     // Create protocol client
     let client: Box<dyn protocol::PlcProtocol> = match dev_config.protocol.as_str() {
         "modbus" => Box::new(ModbusClient::new(&dev_config.address)),
+        "opcua" => Box::new(OpcUaClient::new(&dev_config.address)),
         other => {
             return Json(ApiResponse {
                 success: false,

@@ -89,10 +89,12 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
     final idCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final addrCtrl = TextEditingController(text: prefillAddress ?? '');
+    String selectedProtocol = 'modbus';
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
         title: const Text('Add PLC Device'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -115,10 +117,30 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: addrCtrl,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Address',
-                hintText: 'e.g. 127.0.0.1:5022',
+                hintText: selectedProtocol == 'opcua'
+                    ? 'opc.tcp://127.0.0.1:4840/'
+                    : '127.0.0.1:5022',
               ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('Protocol: ', style: TextStyle(fontSize: 13)),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('MODBUS'),
+                  selected: selectedProtocol == 'modbus',
+                  onSelected: (_) => setDialogState(() => selectedProtocol = 'modbus'),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('OPC UA'),
+                  selected: selectedProtocol == 'opcua',
+                  onSelected: (_) => setDialogState(() => selectedProtocol = 'opcua'),
+                ),
+              ],
             ),
           ],
         ),
@@ -133,6 +155,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
           ),
         ],
       ),
+      ),
     );
 
     if (result == true &&
@@ -143,6 +166,7 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
         id: idCtrl.text.trim(),
         name: nameCtrl.text.trim(),
         address: addrCtrl.text.trim(),
+        protocol: selectedProtocol,
       );
 
       if (device != null) {
@@ -363,10 +387,7 @@ class _DeviceCard extends StatelessWidget {
                           label: device.address,
                         ),
                         const SizedBox(width: 8),
-                        _InfoChip(
-                          icon: Icons.cable_rounded,
-                          label: device.protocol.toUpperCase(),
-                        ),
+                        _ProtocolBadge(protocol: device.protocol),
                       ],
                     ),
                   ],
@@ -419,6 +440,38 @@ class _InfoChip extends StatelessWidget {
         Text(label,
             style: TextStyle(fontSize: 12, color: Colors.grey[400])),
       ],
+    );
+  }
+}
+
+/// Color-coded protocol badge — Modbus (blue), OPC UA (green), unknown (grey).
+class _ProtocolBadge extends StatelessWidget {
+  final String protocol;
+
+  const _ProtocolBadge({required this.protocol});
+
+  @override
+  Widget build(BuildContext context) {
+    final isOpcua = protocol.toLowerCase() == 'opcua';
+    final color = isOpcua ? Colors.teal : Colors.blue;
+    final label = isOpcua ? 'OPC UA' : protocol.toUpperCase();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 0.5,
+        ),
+      ),
     );
   }
 }

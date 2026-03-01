@@ -4,6 +4,7 @@ mod ws;
 mod db;
 mod routes;
 mod modbus;
+mod opcua_client;
 mod config;
 mod protocol;
 mod discovery;
@@ -35,6 +36,7 @@ async fn main() {
     for device in &config.devices {
         let client: Box<dyn protocol::PlcProtocol> = match device.protocol.as_str() {
             "modbus" => Box::new(modbus::ModbusClient::new(&device.address)),
+            "opcua" => Box::new(opcua_client::OpcUaClient::new(&device.address)),
             other => {
                 tracing::warn!("Skipping device '{}': unsupported protocol '{}'", device.id, other);
                 continue;
@@ -75,6 +77,7 @@ async fn main() {
 
         let client: Box<dyn protocol::PlcProtocol> = match device.protocol.as_str() {
             "modbus" => Box::new(modbus::ModbusClient::new(&device.address)),
+            "opcua" => Box::new(opcua_client::OpcUaClient::new(&device.address)),
             other => {
                 tracing::warn!("Skipping DB device '{}': unsupported protocol '{}'", device.id, other);
                 continue;

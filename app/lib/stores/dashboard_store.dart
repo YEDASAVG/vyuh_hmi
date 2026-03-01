@@ -39,6 +39,21 @@ abstract class _DashboardStore with Store {
   @observable
   ObservableList<PlcDevice> devices = ObservableList<PlcDevice>();
 
+  // ── Active Device Selection ───────────────────────────────────────
+
+  @observable
+  late String activeDeviceId = config.device.id;
+
+  /// The currently selected device from the devices list.
+  @computed
+  PlcDevice? get activeDevice {
+    try {
+      return devices.firstWhere((d) => d.id == activeDeviceId);
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── Live Register Values ──────────────────────────────────────────
 
   @observable
@@ -120,8 +135,29 @@ abstract class _DashboardStore with Store {
     if (connected) isServerConnected = true;
   }
 
+  /// Switch the dashboard to show data from a different device.
+  @action
+  void switchDevice(String deviceId) {
+    activeDeviceId = deviceId;
+    // Clear live values and history so stale data doesn't persist.
+    liveValues.clear();
+    registerHistory.clear();
+    temperature = 0;
+    pressure = 0;
+    humidity = 0;
+    flowRate = 0;
+    agitatorSpeed = 0;
+    pH = 0;
+    batchState = BatchState.idle;
+    batchProgress = 0;
+    activeAlarms.clear();
+  }
+
   @action
   void _onData(PlcData data) {
+    // Only process data for the active device.
+    if (data.deviceId != activeDeviceId) return;
+
     final reg = data.register;
     final val = data.value;
 
@@ -170,7 +206,7 @@ abstract class _DashboardStore with Store {
 
     try {
       final success = await _api.writeRegister(
-        deviceId: config.device.id,
+        deviceId: activeDeviceId,
         register: register,
         value: value,
       );

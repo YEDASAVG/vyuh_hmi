@@ -9,6 +9,15 @@ part of 'dashboard_store.dart';
 // ignore_for_file: non_constant_identifier_names, unnecessary_brace_in_string_interps, unnecessary_lambdas, prefer_expression_function_bodies, lines_longer_than_80_chars, avoid_as, avoid_annotating_with_dynamic, no_leading_underscores_for_local_identifiers
 
 mixin _$DashboardStore on _DashboardStore, Store {
+  Computed<PlcDevice?>? _$activeDeviceComputed;
+
+  @override
+  PlcDevice? get activeDevice =>
+      (_$activeDeviceComputed ??= Computed<PlcDevice?>(
+        () => super.activeDevice,
+        name: '_DashboardStore.activeDevice',
+      )).value;
+
   late final _$isServerConnectedAtom = Atom(
     name: '_DashboardStore.isServerConnected',
     context: context,
@@ -61,6 +70,31 @@ mixin _$DashboardStore on _DashboardStore, Store {
     _$devicesAtom.reportWrite(value, super.devices, () {
       super.devices = value;
     });
+  }
+
+  late final _$activeDeviceIdAtom = Atom(
+    name: '_DashboardStore.activeDeviceId',
+    context: context,
+  );
+
+  @override
+  String get activeDeviceId {
+    _$activeDeviceIdAtom.reportRead();
+    return super.activeDeviceId;
+  }
+
+  bool _activeDeviceIdIsInitialized = false;
+
+  @override
+  set activeDeviceId(String value) {
+    _$activeDeviceIdAtom.reportWrite(
+      value,
+      _activeDeviceIdIsInitialized ? super.activeDeviceId : null,
+      () {
+        super.activeDeviceId = value;
+        _activeDeviceIdIsInitialized = true;
+      },
+    );
   }
 
   late final _$liveValuesAtom = Atom(
@@ -348,6 +382,16 @@ mixin _$DashboardStore on _DashboardStore, Store {
     return _$emergencyStopAsyncAction.run(() => super.emergencyStop());
   }
 
+  late final _$restartBatchAsyncAction = AsyncAction(
+    '_DashboardStore.restartBatch',
+    context: context,
+  );
+
+  @override
+  Future<bool> restartBatch() {
+    return _$restartBatchAsyncAction.run(() => super.restartBatch());
+  }
+
   late final _$setAgitatorRpmAsyncAction = AsyncAction(
     '_DashboardStore.setAgitatorRpm',
     context: context,
@@ -403,6 +447,18 @@ mixin _$DashboardStore on _DashboardStore, Store {
   }
 
   @override
+  void switchDevice(String deviceId) {
+    final _$actionInfo = _$_DashboardStoreActionController.startAction(
+      name: '_DashboardStore.switchDevice',
+    );
+    try {
+      return super.switchDevice(deviceId);
+    } finally {
+      _$_DashboardStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
+  @override
   void _onData(PlcData data) {
     final _$actionInfo = _$_DashboardStoreActionController.startAction(
       name: '_DashboardStore._onData',
@@ -444,6 +500,7 @@ mixin _$DashboardStore on _DashboardStore, Store {
 isServerConnected: ${isServerConnected},
 isWsConnected: ${isWsConnected},
 devices: ${devices},
+activeDeviceId: ${activeDeviceId},
 liveValues: ${liveValues},
 registerHistory: ${registerHistory},
 batchState: ${batchState},
@@ -457,7 +514,8 @@ pH: ${pH},
 isWriting: ${isWriting},
 agitatorOverrideActive: ${agitatorOverrideActive},
 lastWriteError: ${lastWriteError},
-activeAlarms: ${activeAlarms}
+activeAlarms: ${activeAlarms},
+activeDevice: ${activeDevice}
     ''';
   }
 }

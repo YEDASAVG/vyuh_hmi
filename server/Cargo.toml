@@ -3,6 +3,14 @@ name = "server"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "opcua_sim"
+path = "src/bin/opcua_sim.rs"
+
 [dependencies]
 # web server
 
@@ -22,3 +30,6 @@ rand = "0.10.0"
 # config + protocol abstraction
 toml = "0.8"
 async-trait = "0.1"
+
+# OPC UA protocol (client for server, server for simulator)
+opcua = { version = "0.12", features = ["client", "server", "console-logging"] }

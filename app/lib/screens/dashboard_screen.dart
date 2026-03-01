@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../config/dashboard_config.dart';
 import '../config/hmi_theme_engine.dart';
 import '../config/widget_registry.dart';
 import '../models/plc_data.dart';
 import '../stores/dashboard_store.dart';
-import '../widgets/alarm_banner_widget.dart';
 import '../widgets/batch_state_widget.dart';
 import '../widgets/connection_status_bar.dart';
 import '../widgets/control_toggle_widget.dart';
@@ -35,11 +35,9 @@ class DashboardScreen extends StatelessWidget {
                 ConnectionStatusBar(
                   isServerConnected: store.isServerConnected,
                   isWsConnected: store.isWsConnected,
-                ),
-                AlarmBanner(
                   alarms: store.activeAlarms.toList(),
-                  onDismiss: store.dismissAlarm,
                 ),
+                _DeviceSwitcherBar(store: store, colors: colors),
                 Expanded(
                   child: isWide
                       ? _wideLayout(constraints, colors)
@@ -371,5 +369,188 @@ class _RestartBatchButton extends StatelessWidget {
     if (confirmed == true) {
       onPressed();
     }
+  }
+}
+
+// ── Device Switcher Bar ──────────────────────────────────────────────
+
+class _DeviceSwitcherBar extends StatelessWidget {
+  final DashboardStore store;
+  final ThemeConfig colors;
+
+  const _DeviceSwitcherBar({required this.store, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Observer(
+      builder: (_) {
+        final devices = store.devices;
+        final active = store.activeDevice;
+        final activeId = store.activeDeviceId;
+
+        if (devices.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: colors.surface,
+            child: Row(
+              children: [
+                Icon(Icons.memory_rounded, size: 16, color: colors.accent),
+                const SizedBox(width: 8),
+                Text(
+                  'Device: $activeId',
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: colors.accent,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            border: Border(
+              bottom: BorderSide(color: colors.surfaceBorder, width: 1),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.memory_rounded, size: 16, color: colors.accent),
+              const SizedBox(width: 8),
+              Text(
+                'DEVICE',
+                style: GoogleFonts.outfit(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color: colors.textMuted,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: devices.map((dev) {
+                      final isActive = dev.id == activeId;
+                      final protocolColor = dev.protocol == 'opcua'
+                          ? const Color(0xFF26A69A)
+                          : const Color(0xFF42A5F5);
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: _DeviceChip(
+                          label: dev.name,
+                          sublabel: dev.protocol.toUpperCase(),
+                          isActive: isActive,
+                          isConnected: dev.isConnected,
+                          accentColor: isActive ? colors.accent : protocolColor,
+                          onTap: () => store.switchDevice(dev.id),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              if (active != null) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (active.protocol == 'opcua'
+                            ? const Color(0xFF26A69A)
+                            : const Color(0xFF42A5F5))
+                        .withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    active.protocol.toUpperCase(),
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: active.protocol == 'opcua'
+                          ? const Color(0xFF26A69A)
+                          : const Color(0xFF42A5F5),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DeviceChip extends StatelessWidget {
+  final String label;
+  final String sublabel;
+  final bool isActive;
+  final bool isConnected;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _DeviceChip({
+    required this.label,
+    required this.sublabel,
+    required this.isActive,
+    required this.isConnected,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: isActive
+                ? accentColor.withValues(alpha: 0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isActive
+                  ? accentColor.withValues(alpha: 0.5)
+                  : Colors.white10,
+              width: isActive ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isConnected ? const Color(0xFF66BB6A) : Colors.red,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.outfit(
+                  fontSize: 12,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                  color: isActive ? accentColor : Colors.white70,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
