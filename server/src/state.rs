@@ -30,6 +30,7 @@ pub struct AppState {
     pub tx: broadcast::Sender<String>,
     pub db: SqlitePool,
     pub devices: DeviceRegistry,
+    #[allow(dead_code)]
     pub config: AppConfig,
 }
 

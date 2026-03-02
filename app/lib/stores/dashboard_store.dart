@@ -11,6 +11,7 @@ import '../widgets/alarm_banner_widget.dart';
 
 part 'dashboard_store.g.dart';
 
+// ignore: library_private_types_in_public_api
 class DashboardStore = _DashboardStore with _$DashboardStore;
 
 abstract class _DashboardStore with Store {
@@ -18,6 +19,12 @@ abstract class _DashboardStore with Store {
   final ApiService _api;
   final DashboardConfig config;
   StreamSubscription? _wsSub;
+
+  /// Public access to the API service (for injecting auth token).
+  ApiService get api => _api;
+
+  /// Public access to WebSocket service (for injecting auth token).
+  WebSocketService get ws => _ws;
 
   _DashboardStore({
     required this.config,

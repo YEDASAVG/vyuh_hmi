@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -6,7 +9,7 @@ import '../models/plc_data.dart';
 import '../stores/dashboard_store.dart';
 import '../theme/hmi_colors.dart';
 
-/// A single point-in-time snapshot with all register values grouped.
+/// A grouped snapshot — one per second with all register values.
 class _Snapshot {
   final DateTime time;
   double temp;
@@ -40,7 +43,7 @@ class _Snapshot {
   Color get batchColor => HmiColors.batchStateColor(batchLabel);
 }
 
-/// Historical data screen — fetches past readings, groups by timestamp.
+/// History screen — shows past readings per device, auto-refreshes.
 class HistoryScreen extends StatefulWidget {
   final DashboardStore store;
 
@@ -54,46 +57,60 @@ class _HistoryScreenState extends State<HistoryScreen> {
   List<_Snapshot> _snapshots = [];
   bool _loading = true;
   String? _error;
-  int _limit = 200; // fetch more raw rows to get decent grouped snapshots
+  int _limit = 200;
+  Timer? _refreshTimer;
+  late String _selectedDeviceId;
 
   @override
   void initState() {
     super.initState();
+    _selectedDeviceId = widget.store.activeDeviceId;
     _fetchHistory();
+    // Auto-refresh every 5 seconds
+    _refreshTimer = Timer.periodic(
+        const Duration(seconds: 5), (_) => _fetchHistory(silent: true));
   }
 
-  Future<void> _fetchHistory() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchHistory({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final data = await widget.store.fetchHistory(
-        deviceId: 'plc-01',
+        deviceId: _selectedDeviceId,
         limit: _limit,
       );
-      setState(() {
-        _snapshots = _groupByTimestamp(data);
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _snapshots = _groupByTimestamp(data);
+          _loading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
     }
   }
 
-  /// Group raw per-register rows into snapshots by second.
   List<_Snapshot> _groupByTimestamp(List<PlcData> raw) {
     final Map<String, _Snapshot> map = {};
-
     for (final d in raw) {
-      // Group by second (strip milliseconds).
       final dt = DateTime.tryParse(d.timestamp);
       if (dt == null) continue;
       final key = DateFormat('yyyy-MM-dd HH:mm:ss').format(dt.toLocal());
-
       final snap = map.putIfAbsent(key, () => _Snapshot(dt));
       switch (d.register) {
         case 1028:
@@ -114,9 +131,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           snap.pH = d.value / 10.0;
       }
     }
-
     final list = map.values.toList();
-    list.sort((a, b) => b.time.compareTo(a.time)); // newest first
+    list.sort((a, b) => b.time.compareTo(a.time));
     return list;
   }
 
@@ -124,42 +140,142 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: HmiColors.void_,
-      appBar: AppBar(
-        title: Text(
-          'History',
-          style: GoogleFonts.outfit(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: HmiColors.textPrimary,
-          ),
-        ),
-        backgroundColor: HmiColors.void_,
-        actions: [
-          PopupMenuButton<int>(
-            icon: const Icon(Icons.filter_list, color: HmiColors.textSecondary),
-            color: HmiColors.surface,
-            onSelected: (val) {
-              _limit = val;
-              _fetchHistory();
-            },
-            itemBuilder: (_) => [200, 400, 800, 1600]
-                .map((n) => PopupMenuItem(
-                      value: n,
-                      child: Text(
-                        '~${n ~/ 8} snapshots',
-                        style: GoogleFonts.outfit(color: HmiColors.textPrimary),
-                      ),
-                    ))
-                .toList(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: HmiColors.textSecondary),
-            onPressed: _fetchHistory,
-          ),
+      body: Column(
+        children: [
+          // ── Header with device picker ──
+          _buildHeader(),
+          // ── Body ──
+          Expanded(child: _buildBody()),
         ],
       ),
-      body: _buildBody(),
     );
+  }
+
+  Widget _buildHeader() {
+    return Observer(builder: (_) {
+      final devices = widget.store.devices;
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: HmiColors.surface,
+          border: Border(
+            bottom: BorderSide(color: HmiColors.surfaceBorder, width: 1),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.history_rounded, size: 20, color: HmiColors.accent),
+                const SizedBox(width: 8),
+                Text(
+                  'History',
+                  style: GoogleFonts.outfit(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: HmiColors.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                // Limit picker
+                PopupMenuButton<int>(
+                  icon: Icon(Icons.filter_list_rounded,
+                      size: 20, color: HmiColors.textSecondary),
+                  color: HmiColors.surface,
+                  onSelected: (val) {
+                    _limit = val;
+                    _fetchHistory();
+                  },
+                  itemBuilder: (_) => [
+                    for (final n in [100, 200, 400, 800])
+                      PopupMenuItem(
+                        value: n,
+                        child: Text(
+                          '~${n ~/ 8} snapshots',
+                          style: GoogleFonts.outfit(
+                              fontSize: 13, color: HmiColors.textPrimary),
+                        ),
+                      ),
+                  ],
+                ),
+                IconButton(
+                  icon: Icon(Icons.refresh_rounded,
+                      size: 20, color: HmiColors.textSecondary),
+                  onPressed: _fetchHistory,
+                  tooltip: 'Refresh',
+                ),
+              ],
+            ),
+            if (devices.length > 1) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 34,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: devices.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (ctx, i) {
+                    final dev = devices[i];
+                    final isActive = dev.id == _selectedDeviceId;
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() => _selectedDeviceId = dev.id);
+                        _fetchHistory();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? HmiColors.accent.withValues(alpha: 0.15)
+                              : Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isActive
+                                ? HmiColors.accent.withValues(alpha: 0.5)
+                                : Colors.white.withValues(alpha: 0.1),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: dev.isConnected
+                                    ? HmiColors.healthy
+                                    : HmiColors.danger,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              dev.name,
+                              style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                fontWeight: isActive
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: isActive
+                                    ? HmiColors.accent
+                                    : HmiColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    });
   }
 
   Widget _buildBody() {
@@ -187,8 +303,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
             const SizedBox(height: 16),
             TextButton(
               onPressed: _fetchHistory,
-              child:
-                  Text('Retry', style: GoogleFonts.outfit(color: HmiColors.accent)),
+              child: Text('Retry',
+                  style: GoogleFonts.outfit(color: HmiColors.accent)),
             ),
           ],
         ),
@@ -197,141 +313,173 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     if (_snapshots.isEmpty) {
       return Center(
-        child: Text('No history data',
-            style: GoogleFonts.outfit(fontSize: 14, color: HmiColors.textMuted)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.hourglass_empty_rounded,
+                size: 48, color: HmiColors.textMuted),
+            const SizedBox(height: 12),
+            Text('No history yet',
+                style: GoogleFonts.outfit(
+                    fontSize: 16, color: HmiColors.textSecondary)),
+            const SizedBox(height: 4),
+            Text('Data will appear once the PLC starts collecting.',
+                style: GoogleFonts.outfit(
+                    fontSize: 12, color: HmiColors.textMuted)),
+          ],
+        ),
       );
     }
 
     return Column(
       children: [
-        // Summary bar.
+        // Summary bar
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          color: HmiColors.surface,
-          child: Text(
-            '${_snapshots.length} snapshots  •  1 per second  •  newest first',
-            style: GoogleFonts.outfit(fontSize: 12, color: HmiColors.textMuted),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: HmiColors.surface.withValues(alpha: 0.5),
+          child: Row(
+            children: [
+              _summaryChip(
+                  Icons.data_array_rounded,
+                  '${_snapshots.length} snapshots',
+                  HmiColors.accent),
+              const SizedBox(width: 12),
+              _summaryChip(
+                  Icons.timer_outlined,
+                  '1/sec',
+                  HmiColors.info),
+              const Spacer(),
+              Text(
+                'Auto-refresh 5s',
+                style: GoogleFonts.outfit(
+                    fontSize: 10, color: HmiColors.textMuted),
+              ),
+            ],
           ),
         ),
         const Divider(height: 1, color: HmiColors.surfaceBorder),
-        // Snapshot list.
+        // Table header
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: HmiColors.surface,
+          child: Row(
+            children: [
+              _headerCell('TIME', flex: 2),
+              _headerCell('TEMP'),
+              _headerCell('PSI'),
+              _headerCell('RH%'),
+              _headerCell('FLOW'),
+              _headerCell('RPM'),
+              _headerCell('pH'),
+              _headerCell('STATE', flex: 2),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: HmiColors.surfaceBorder),
+        // Data rows
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.zero,
             itemCount: _snapshots.length,
-            itemBuilder: (ctx, i) => _buildSnapshotCard(_snapshots[i]),
+            itemBuilder: (ctx, i) => _buildRow(_snapshots[i], i),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildSnapshotCard(_Snapshot snap) {
+  Widget _summaryChip(IconData icon, String text, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(text,
+            style: GoogleFonts.outfit(fontSize: 11, color: color)),
+      ],
+    );
+  }
+
+  Widget _headerCell(String text, {int flex = 1}) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        style: GoogleFonts.dmMono(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+          color: HmiColors.textMuted,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow(_Snapshot snap, int index) {
     final timeStr = DateFormat('HH:mm:ss').format(snap.time.toLocal());
+    final isEven = index % 2 == 0;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: HmiColors.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: HmiColors.surfaceBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: isEven ? Colors.transparent : HmiColors.surface.withValues(alpha: 0.3),
+      child: Row(
         children: [
-          // Header row: timestamp + batch state badge.
-          Row(
-            children: [
-              Icon(Icons.access_time, size: 14, color: HmiColors.textMuted),
-              const SizedBox(width: 6),
-              Text(
-                timeStr,
-                style: GoogleFonts.dmMono(
-                    fontSize: 13, color: HmiColors.textSecondary),
-              ),
-              const Spacer(),
-              // Batch state badge.
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: snap.batchColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                  border:
-                      Border.all(color: snap.batchColor.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  snap.batchLabel,
-                  style: GoogleFonts.dmMono(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: snap.batchColor),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${snap.progress.toInt()}%',
-                style: GoogleFonts.dmMono(
-                    fontSize: 12, color: HmiColors.textSecondary),
-              ),
-            ],
+          // Time
+          Expanded(
+            flex: 2,
+            child: Text(
+              timeStr,
+              style: GoogleFonts.dmMono(
+                  fontSize: 12, color: HmiColors.textSecondary),
+            ),
           ),
-          const SizedBox(height: 10),
-          // Values grid — 2 rows of 3.
-          Row(
-            children: [
-              _val('Temp', '${snap.temp.toInt()}', '°C', HmiColors.accent),
-              _val('Press', snap.pressure.toInt().toString(), 'mbar',
-                  HmiColors.info),
-              _val('Humid', '${snap.humidity.toInt()}', '%', HmiColors.info),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              _val('Flow', '${snap.flow.toInt()}', 'L/m', HmiColors.healthy),
-              _val('Agit', '${snap.agitator.toInt()}', 'RPM',
-                  HmiColors.warning),
-              _val('pH', snap.pH.toStringAsFixed(1), '', HmiColors.accent),
-            ],
+          // Temp
+          _dataCell('${snap.temp.toInt()}', HmiColors.accent),
+          // Pressure
+          _dataCell('${snap.pressure.toInt()}', HmiColors.info),
+          // Humidity
+          _dataCell('${snap.humidity.toInt()}', HmiColors.info),
+          // Flow
+          _dataCell('${snap.flow.toInt()}', HmiColors.healthy),
+          // Agitator
+          _dataCell('${snap.agitator.toInt()}', HmiColors.warning),
+          // pH
+          _dataCell(snap.pH.toStringAsFixed(1), const Color(0xFFAB47BC)),
+          // Batch state
+          Expanded(
+            flex: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: snap.batchColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Text(
+                '${snap.batchLabel} ${snap.progress.toInt()}%',
+                style: GoogleFonts.dmMono(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: snap.batchColor,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  /// Single value cell inside the snapshot card.
-  Widget _val(String label, String value, String unit, Color color) {
+  Widget _dataCell(String value, Color color) {
     return Expanded(
-      child: Row(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: GoogleFonts.outfit(
-                      fontSize: 10, color: HmiColors.textMuted)),
-              const SizedBox(height: 2),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(value,
-                      style: GoogleFonts.dmMono(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: color)),
-                  const SizedBox(width: 2),
-                  Text(unit,
-                      style: GoogleFonts.outfit(
-                          fontSize: 10, color: HmiColors.textMuted)),
-                ],
-              ),
-            ],
-          ),
-        ],
+      child: Text(
+        value,
+        style: GoogleFonts.dmMono(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: color,
+        ),
       ),
     );
   }

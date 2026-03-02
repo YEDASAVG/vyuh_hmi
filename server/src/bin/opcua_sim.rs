@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use opcua::server::prelude::*;
 use opcua::sync::Mutex;
+use opcua::types::NumericRange;
 
 // ── Node IDs (namespace 2, matching Modbus register addresses) ──
 const REG_TEMPERATURE: u32 = 1028;
@@ -27,15 +28,35 @@ fn main() {
     // Init logging via env_logger (set RUST_LOG=info to see output)
     let _ = opcua::console_logging::init();
 
+    // Detect the machine's LAN IP address so the OPC UA endpoint URL is
+    // routable from other machines on the network. We use the UDP socket
+    // trick: connect a UDP socket to a public IP (doesn't actually send
+    // anything) and then read back the local address chosen by the OS.
+    let local_ip = (|| -> Option<String> {
+        let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+        socket.connect("8.8.8.8:80").ok()?;
+        let addr = socket.local_addr().ok()?;
+        Some(addr.ip().to_string())
+    })()
+    .unwrap_or_else(|| "127.0.0.1".to_string());
+
+    println!("Detected LAN IP: {local_ip}");
+
     // ── Build server (anonymous access, no encryption) ──
+    // Use the LAN IP for host_and_port so BOTH the TCP endpoint URLs
+    // AND the discovery URLs are routable from remote clients.
     let mut server = ServerBuilder::new_anonymous("OPC UA Pharma Simulator")
         .application_uri("urn:VyuhPharmaSim")
         .product_uri("urn:VyuhPharmaSim")
-        .host_and_port("0.0.0.0", 4840)
+        .host_and_port(&local_ip, 4840)
+        .discovery_urls(vec![format!("opc.tcp://{}:4840/", local_ip)])
         .create_sample_keypair(true)
         .pki_dir("./opcua-pki-sim")
         .discovery_server_url(None)
         .trust_client_certs()
+        // Increase max message/chunk limits for subscription PublishResponse
+        .max_message_size(4 * 1024 * 1024)  // 4 MB
+        .max_chunk_count(64)
         .server()
         .expect("Failed to create OPC UA server");
 
@@ -57,7 +78,7 @@ fn main() {
             .expect("Failed to add folder");
 
         // Add all 8 process variables (UInt16, matching Modbus register convention)
-        let _ = address_space.add_variables(
+        let add_results = address_space.add_variables(
             vec![
                 Variable::new(&NodeId::new(ns, REG_TEMPERATURE), "Temperature", "Temperature (°C)", 65u16),
                 Variable::new(&NodeId::new(ns, REG_PRESSURE), "Pressure", "Pressure (mbar)", 1013u16),
@@ -70,6 +91,37 @@ fn main() {
             ],
             &folder_id,
         );
+        println!("add_variables results: {:?}", add_results);
+        println!("Namespace index: {ns}");
+
+        // ── Fix for OPC UA subscriptions ──
+        // Variable::new() stores DataValues with status=None and no timestamps.
+        // The opcua server treats status=None as "no data yet" so subscription
+        // MonitoredItems stay in BadWaitingForInitialData forever.
+        // Explicitly set each variable's DataValue with StatusCode::Good.
+        let now = DateTime::now();
+        for &(reg, val) in &[
+            (REG_TEMPERATURE, 65u16),
+            (REG_PRESSURE, 1013),
+            (REG_HUMIDITY, 45),
+            (REG_FLOW_RATE, 50),
+            (REG_BATCH_STATE, 0),
+            (REG_BATCH_PROGRESS, 0),
+            (REG_AGITATOR_RPM, 0),
+            (REG_PH, 70),
+        ] {
+            let node_id = NodeId::new(ns, reg);
+            if let Some(v) = address_space.find_variable_mut(node_id) {
+                let _ = v.set_value(NumericRange::None, DataValue {
+                    value: Some(Variant::UInt16(val)),
+                    status: Some(StatusCode::Good),
+                    source_timestamp: Some(now.clone()),
+                    source_picoseconds: None,
+                    server_timestamp: Some(now.clone()),
+                    server_picoseconds: None,
+                });
+            }
+        }
 
         ns
     };

@@ -33,3 +33,12 @@ async-trait = "0.1"
 
 # OPC UA protocol (client for server, server for simulator)
 opcua = { version = "0.12", features = ["client", "server", "console-logging"] }
+
+# hostname detection for OPC UA endpoint URLs
+hostname = "0.4"
+
+# Phase 8: Auth & Audit Trail (21 CFR Part 11)
+argon2 = { version = "0.5", features = ["rand"] }  # password hashing
+rand_core = { version = "0.6", features = ["getrandom"] }  # OsRng for argon2
+jsonwebtoken = "9"                # JWT tokens
+uuid = { version = "1", features = ["v4"] }  # unique IDs

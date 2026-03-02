@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../models/plc_device.dart';
 import '../services/api_service.dart';
+import '../theme/hmi_colors.dart';
 
 /// Phase 6: Device List & Management Screen
 ///
@@ -10,8 +12,15 @@ import '../services/api_service.dart';
 class DeviceListScreen extends StatefulWidget {
   final ApiService api;
   final void Function(PlcDevice device)? onDeviceTap;
+  /// When false, hides add/remove/scan buttons (viewer role).
+  final bool canManage;
 
-  const DeviceListScreen({super.key, required this.api, this.onDeviceTap});
+  const DeviceListScreen({
+    super.key,
+    required this.api,
+    this.onDeviceTap,
+    this.canManage = false,
+  });
 
   @override
   State<DeviceListScreen> createState() => _DeviceListScreenState();
@@ -91,70 +100,177 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
     final addrCtrl = TextEditingController(text: prefillAddress ?? '');
     String selectedProtocol = 'modbus';
 
+    final inputDecoration = InputDecoration(
+      filled: true,
+      fillColor: HmiColors.void_,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: HmiColors.surfaceBorder),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: HmiColors.surfaceBorder),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: HmiColors.accent, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      labelStyle: GoogleFonts.outfit(fontSize: 13, color: HmiColors.textMuted),
+      hintStyle: GoogleFonts.outfit(fontSize: 12, color: HmiColors.textMuted),
+    );
+
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-        title: const Text('Add PLC Device'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: idCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Device ID',
-                hintText: 'e.g. plc-03',
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Device Name',
-                hintText: 'e.g. Mixing Tank',
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: addrCtrl,
-              decoration: InputDecoration(
-                labelText: 'Address',
-                hintText: selectedProtocol == 'opcua'
-                    ? 'opc.tcp://127.0.0.1:4840/'
-                    : '127.0.0.1:5022',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
+          backgroundColor: HmiColors.surface,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              const Icon(Icons.add_circle_outline_rounded,
+                  size: 20, color: HmiColors.accent),
+              const SizedBox(width: 8),
+              Text('Add PLC Device',
+                  style: GoogleFonts.outfit(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: HmiColors.textPrimary)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Protocol: ', style: TextStyle(fontSize: 13)),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('MODBUS'),
-                  selected: selectedProtocol == 'modbus',
-                  onSelected: (_) => setDialogState(() => selectedProtocol = 'modbus'),
+                TextField(
+                  controller: idCtrl,
+                  style: GoogleFonts.dmMono(
+                      fontSize: 13, color: HmiColors.textPrimary),
+                  decoration: inputDecoration.copyWith(
+                    labelText: 'Device ID',
+                    hintText: 'e.g. plc-04',
+                    prefixIcon: const Icon(Icons.tag,
+                        size: 18, color: HmiColors.textMuted),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('OPC UA'),
-                  selected: selectedProtocol == 'opcua',
-                  onSelected: (_) => setDialogState(() => selectedProtocol = 'opcua'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameCtrl,
+                  style: GoogleFonts.outfit(
+                      fontSize: 13, color: HmiColors.textPrimary),
+                  decoration: inputDecoration.copyWith(
+                    labelText: 'Device Name',
+                    hintText: 'e.g. Mixing Tank',
+                    prefixIcon: const Icon(Icons.label_outline_rounded,
+                        size: 18, color: HmiColors.textMuted),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: addrCtrl,
+                  style: GoogleFonts.dmMono(
+                      fontSize: 13, color: HmiColors.textPrimary),
+                  decoration: inputDecoration.copyWith(
+                    labelText: 'Address',
+                    hintText: selectedProtocol == 'opcua'
+                        ? 'opc.tcp://127.0.0.1:4840/'
+                        : '127.0.0.1:5022',
+                    prefixIcon: const Icon(Icons.lan_rounded,
+                        size: 18, color: HmiColors.textMuted),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('Protocol',
+                    style: GoogleFonts.outfit(
+                        fontSize: 12, color: HmiColors.textMuted)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () =>
+                            setDialogState(() => selectedProtocol = 'modbus'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: selectedProtocol == 'modbus'
+                                ? Colors.blue.withValues(alpha: 0.15)
+                                : Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: selectedProtocol == 'modbus'
+                                  ? Colors.blue.withValues(alpha: 0.5)
+                                  : HmiColors.surfaceBorder,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text('MODBUS',
+                                style: GoogleFonts.dmMono(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: selectedProtocol == 'modbus'
+                                      ? Colors.blue
+                                      : HmiColors.textMuted,
+                                )),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () =>
+                            setDialogState(() => selectedProtocol = 'opcua'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: selectedProtocol == 'opcua'
+                                ? Colors.teal.withValues(alpha: 0.15)
+                                : Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: selectedProtocol == 'opcua'
+                                  ? Colors.teal.withValues(alpha: 0.5)
+                                  : HmiColors.surfaceBorder,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text('OPC UA',
+                                style: GoogleFonts.dmMono(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: selectedProtocol == 'opcua'
+                                      ? Colors.teal
+                                      : HmiColors.textMuted,
+                                )),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel',
+                  style: GoogleFonts.outfit(color: HmiColors.textMuted)),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: HmiColors.accent,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Add Device',
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w600, color: Colors.white)),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
       ),
     );
 
@@ -186,9 +302,6 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,36 +311,40 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Row(
               children: [
-                Icon(Icons.devices_other_rounded,
-                    color: colorScheme.primary, size: 28),
+                const Icon(Icons.devices_other_rounded,
+                    color: HmiColors.accent, size: 28),
                 const SizedBox(width: 10),
                 Text('PLC Devices',
-                    style: theme.textTheme.headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.bold)),
+                    style: GoogleFonts.outfit(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: HmiColors.textPrimary)),
                 const Spacer(),
-                // Scan button
-                _scanning
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : IconButton(
-                        icon: const Icon(Icons.radar_rounded),
-                        tooltip: 'Scan Network',
-                        onPressed: _scanNetwork,
-                      ),
+                // Scan button (operator/admin only)
+                if (widget.canManage)
+                  _scanning
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : IconButton(
+                          icon: const Icon(Icons.radar_rounded),
+                          tooltip: 'Scan Network',
+                          onPressed: _scanNetwork,
+                        ),
                 // Refresh
                 IconButton(
                   icon: const Icon(Icons.refresh_rounded),
                   tooltip: 'Refresh',
                   onPressed: _loadDevices,
                 ),
-                // Add manually
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline_rounded),
-                  tooltip: 'Add Device',
-                  onPressed: () => _showAddDeviceDialog(),
-                ),
+                // Add manually (operator/admin only)
+                if (widget.canManage)
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline_rounded),
+                    tooltip: 'Add Device',
+                    onPressed: () => _showAddDeviceDialog(),
+                  ),
               ],
             ),
           ),
@@ -239,8 +356,10 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
               child: Text('Discovered on Network',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(color: Colors.green)),
+                  style: GoogleFonts.outfit(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: HmiColors.healthy)),
             ),
             SizedBox(
               height: 64,
@@ -285,12 +404,13 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.precision_manufacturing_outlined,
-                                size: 64, color: Colors.grey[600]),
+                            const Icon(Icons.precision_manufacturing_outlined,
+                                size: 64, color: HmiColors.textMuted),
                             const SizedBox(height: 12),
                             Text('No devices connected',
-                                style: theme.textTheme.bodyLarge
-                                    ?.copyWith(color: Colors.grey[500])),
+                                style: GoogleFonts.outfit(
+                                    fontSize: 16,
+                                    color: HmiColors.textSecondary)),
                             const SizedBox(height: 8),
                             FilledButton.tonal(
                               onPressed: _scanNetwork,
@@ -309,8 +429,9 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
                                 device: _devices[i],
                                 onTap: () =>
                                     widget.onDeviceTap?.call(_devices[i]),
-                                onRemove: () =>
-                                    _removeDevice(_devices[i].id),
+                                onRemove: widget.canManage
+                                    ? () => _removeDevice(_devices[i].id)
+                                    : null,
                               ),
                         ),
                       ),
@@ -332,13 +453,16 @@ class _DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final connected = device.isConnected;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 0,
+      color: HmiColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: HmiColors.surfaceBorder),
+      ),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
@@ -351,7 +475,7 @@ class _DeviceCard extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: (connected ? Colors.green : Colors.red)
+                  color: (connected ? HmiColors.healthy : HmiColors.danger)
                       .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -359,7 +483,7 @@ class _DeviceCard extends StatelessWidget {
                   connected
                       ? Icons.check_circle_rounded
                       : Icons.error_rounded,
-                  color: connected ? Colors.green : Colors.red,
+                  color: connected ? HmiColors.healthy : HmiColors.danger,
                 ),
               ),
               const SizedBox(width: 14),
@@ -371,22 +495,24 @@ class _DeviceCard extends StatelessWidget {
                   children: [
                     Text(
                       device.name,
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: GoogleFonts.outfit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: HmiColors.textPrimary),
                     ),
                     const SizedBox(height: 4),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         _InfoChip(
                           icon: Icons.tag,
                           label: device.id,
                         ),
-                        const SizedBox(width: 8),
                         _InfoChip(
                           icon: Icons.lan_rounded,
                           label: device.address,
                         ),
-                        const SizedBox(width: 8),
                         _ProtocolBadge(protocol: device.protocol),
                       ],
                     ),
@@ -399,21 +525,22 @@ class _DeviceCard extends StatelessWidget {
                 children: [
                   Text(
                     connected ? 'ONLINE' : 'OFFLINE',
-                    style: TextStyle(
+                    style: GoogleFonts.dmMono(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: connected ? Colors.green : Colors.red,
+                      color: connected ? HmiColors.healthy : HmiColors.danger,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                    onPressed: onRemove,
-                    tooltip: 'Remove device',
-                    style: IconButton.styleFrom(
-                      foregroundColor: Colors.red[300],
+                  if (onRemove != null)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                      onPressed: onRemove,
+                      tooltip: 'Remove device',
+                      style: IconButton.styleFrom(
+                        foregroundColor: Colors.red[300],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ],

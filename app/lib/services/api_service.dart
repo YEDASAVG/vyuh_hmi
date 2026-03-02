@@ -9,12 +9,25 @@ import '../models/plc_device.dart';
 /// REST API service for the Rust HMI server.
 class ApiService {
   final String baseUrl;
+  String? _authToken;
 
   ApiService({this.baseUrl = 'http://127.0.0.1:3000'});
 
+  /// Set the auth token for authenticated requests.
+  void setAuthToken(String? token) => _authToken = token;
+
+  /// Headers with auth token if available.
+  Map<String, String> get _headers {
+    final h = <String, String>{'Content-Type': 'application/json'};
+    if (_authToken != null) {
+      h['Authorization'] = 'Bearer $_authToken';
+    }
+    return h;
+  }
+
   /// GET /api/devices — fetch all known PLC devices.
   Future<List<PlcDevice>> getDevices() async {
-    final response = await http.get(Uri.parse('$baseUrl/api/devices'));
+    final response = await http.get(Uri.parse('$baseUrl/api/devices'), headers: _headers);
 
     if (response.statusCode == 200) {
       final apiResp = ApiResponse<List<PlcDevice>>.fromJson(
@@ -39,7 +52,7 @@ class ApiService {
         'limit': limit.toString(),
       },
     );
-    final response = await http.get(uri);
+    final response = await http.get(uri, headers: _headers);
 
     if (response.statusCode == 200) {
       final apiResp = ApiResponse<List<PlcData>>.fromJson(
@@ -81,7 +94,7 @@ class ApiService {
       final response = await http
           .post(
             Uri.parse('$baseUrl/api/write'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _headers,
             body: jsonEncode({
               'device_id': deviceId,
               'register': register,
@@ -106,7 +119,7 @@ class ApiService {
       final response = await http
           .post(
             Uri.parse('$baseUrl/api/discover'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _headers,
             body: jsonEncode(null),
           )
           .timeout(const Duration(seconds: 10));
@@ -138,7 +151,7 @@ class ApiService {
       final response = await http
           .post(
             Uri.parse('$baseUrl/api/devices'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _headers,
             body: jsonEncode({
               'id': id,
               'name': name,
@@ -168,7 +181,7 @@ class ApiService {
   Future<bool> removeDevice(String deviceId) async {
     try {
       final response = await http
-          .delete(Uri.parse('$baseUrl/api/devices/$deviceId'))
+          .delete(Uri.parse('$baseUrl/api/devices/$deviceId'), headers: _headers)
           .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {

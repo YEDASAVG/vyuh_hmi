@@ -14,12 +14,17 @@ import '../widgets/control_toggle_widget.dart';
 class DashboardScreen extends StatelessWidget {
   final DashboardStore store;
   final DashboardConfig config;
+  /// User role — controls are hidden for 'viewer'.
+  final String userRole;
 
   const DashboardScreen({
     super.key,
     required this.store,
     required this.config,
+    this.userRole = 'viewer',
   });
+
+  bool get _canControl => userRole == 'admin' || userRole == 'operator';
 
   @override
   Widget build(BuildContext context) {
@@ -102,10 +107,10 @@ class DashboardScreen extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  // ── Control Panel ──
-                  if (config.dashboard.controls != null)
+                  // ── Control Panel (operator / admin only) ──
+                  if (_canControl && config.dashboard.controls != null)
                     _buildControlPanel(colors),
-                  if (config.dashboard.controls != null)
+                  if (_canControl && config.dashboard.controls != null)
                     const SizedBox(height: 20),
                   // ── Charts row ──
                   SizedBox(
@@ -148,7 +153,7 @@ class DashboardScreen extends StatelessWidget {
           children: registry.buildStatCards(),
         ),
         const SizedBox(height: 16),
-        if (config.dashboard.controls != null) _buildControlPanel(colors),
+        if (_canControl && config.dashboard.controls != null) _buildControlPanel(colors),
         const SizedBox(height: 16),
         ...registry
             .buildChartsNarrow()

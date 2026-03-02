@@ -1,19 +1,56 @@
 use axum::{
-    extract::State,
+    extract::{Query, State},
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    response::Response,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
 };
 
 use futures::{SinkExt, StreamExt};
+use serde::Deserialize;
 use tracing::{info, warn};
 
+use crate::auth;
 use crate::state::AppState;
 
-// Handler if anybody connect on /ws
+#[derive(Deserialize)]
+pub struct WsQuery {
+    pub token: Option<String>,
+}
 
-pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>,) -> Response {
-    info!("New Websocket connection request");
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+// Handler for /ws — validates JWT from ?token= query param
+
+pub async fn ws_handler(
+    Query(query): Query<WsQuery>,
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> Response {
+    // Validate token from query parameter
+    let token = match query.token {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "success": false, "error": "Missing token query parameter" })),
+            )
+                .into_response();
+        }
+    };
+
+    match auth::validate_token(&token) {
+        Ok(claims) => {
+            info!("WebSocket auth OK for user '{}'", claims.sub);
+            ws.on_upgrade(move |socket| handle_socket(socket, state))
+        }
+        Err(e) => {
+            warn!("WebSocket auth failed: {}", e);
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "success": false, "error": e })),
+            )
+                .into_response()
+        }
+    }
 }
 
 // actual websocket logic

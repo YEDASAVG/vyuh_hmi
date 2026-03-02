@@ -8,7 +8,9 @@ mod opcua_client;
 mod config;
 mod protocol;
 mod discovery;
+mod auth;
 
+use axum::middleware as axum_mw;
 use axum::routing::{delete, get, post};
 use axum::Router;
 use tokio::net::TcpListener;
@@ -28,6 +30,9 @@ async fn main() {
 
     // ── Database ──
     let pool = db::init_db(&config.database.path).await;
+
+    // ── Auth tables + seed default users ──
+    auth::init_auth_tables(&pool).await;
 
     // ── App state (no single write_tx anymore — per-device channels) ──
     let app_state = AppState::new(pool.clone(), config.clone());
@@ -107,18 +112,49 @@ async fn main() {
 
     // ── Router ──
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
-    let app = Router::new()
+
+    // Public routes (no auth required)
+    let public_routes = Router::new()
         .route("/health", get(health))
-        .route("/ws", get(ws::ws_handler))
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/verify", post(auth::verify_token_handler))
+        // WebSocket uses query-param auth (browsers can't set headers on WS upgrade)
+        .route("/ws", get(ws::ws_handler));
+
+    // Protected routes — require valid JWT (any role)
+    let protected_routes = Router::new()
         .route("/api/devices", get(routes::get_devices))
+        .route("/api/history", get(routes::get_history))
+        .route("/api/audit", get(auth::get_audit_trail))
+        .route("/api/auth/esig", post(auth::electronic_signature))
+        .layer(axum_mw::from_fn(auth::auth_middleware));
+
+    // Operator routes — require Operator or Admin role
+    let operator_routes = Router::new()
         .route("/api/devices", post(routes::add_device))
         .route("/api/devices/{id}", delete(routes::remove_device))
         .route("/api/discover", post(routes::discover_devices))
-        .route("/api/history", get(routes::get_history))
         .route("/api/write", post(routes::post_write))
+        .layer(axum_mw::from_fn(auth::require_operator));
+
+    // Admin routes — require Admin role
+    let admin_routes = Router::new()
+        .route("/api/users", get(auth::list_users))
+        .route("/api/users", post(auth::create_user))
+        .layer(axum_mw::from_fn(auth::require_admin));
+
+    let app = Router::new()
+        .merge(public_routes)
+        .merge(protected_routes)
+        .merge(operator_routes)
+        .merge(admin_routes)
         .with_state(app_state);
 
-    let listener = TcpListener::bind(&bind_addr).await.unwrap();
+    let listener = TcpListener::bind(&bind_addr).await.unwrap_or_else(|e| {
+        eprintln!("ERROR: Cannot bind to {bind_addr}: {e}");
+        eprintln!("       Is another server already running? Try: lsof -i :3000");
+        std::process::exit(1);
+    });
     info!("Server running on http://{}", bind_addr);
 
     axum::serve(listener, app).await.unwrap();

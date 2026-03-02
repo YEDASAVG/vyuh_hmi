@@ -1,11 +1,12 @@
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, Query, State, Request},
 };
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use tracing::info;
 
+use crate::auth::{self, Claims};
 use crate::config::DeviceConfig;
 use crate::db;
 use crate::discovery;
@@ -197,10 +198,36 @@ pub async fn get_history(
 
 // ── POST /api/write ─────────────────────────────────────────────
 // Route write to the correct device's channel.
+// Now extracts user info from auth middleware for audit trail.
 pub async fn post_write(
     State(state): State<AppState>,
-    Json(req): Json<WriteRequest>,
+    request: Request,
 ) -> Json<ApiResponse<String>> {
+    // Extract auth claims (injected by operator middleware)
+    let claims = request.extensions().get::<Claims>().cloned();
+
+    // Parse body
+    let body = match axum::body::to_bytes(request.into_body(), 1024 * 16).await {
+        Ok(b) => b,
+        Err(_) => {
+            return Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some("Invalid request body".to_string()),
+            });
+        }
+    };
+    let req: WriteRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            return Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(format!("Invalid JSON: {e}")),
+            });
+        }
+    };
+
     // Find the device in registry
     let registry = state.devices.read().await;
     let Some(handle) = registry.get(&req.device_id) else {
@@ -240,11 +267,32 @@ pub async fn post_write(
     drop(registry);
 
     match resp_rx.await {
-        Ok(Ok(())) => Json(ApiResponse {
-            success: true,
-            data: Some(format!("[{}] Register {} = {}", req.device_id, req.register, req.value)),
-            error: None,
-        }),
+        Ok(Ok(())) => {
+            // Audit trail: log the write operation
+            if let Some(ref claims) = claims {
+                let details = serde_json::json!({
+                    "register": req.register,
+                    "value": req.value,
+                })
+                .to_string();
+                auth::log_audit(
+                    &state.db,
+                    &claims.user_id,
+                    &claims.sub,
+                    "write_register",
+                    Some(&req.device_id),
+                    &details,
+                    None,
+                )
+                .await;
+            }
+
+            Json(ApiResponse {
+                success: true,
+                data: Some(format!("[{}] Register {} = {}", req.device_id, req.register, req.value)),
+                error: None,
+            })
+        }
         Ok(Err(e)) => Json(ApiResponse {
             success: false,
             data: None,

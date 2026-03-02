@@ -7,8 +7,8 @@ import '../theme/hmi_colors.dart';
 import '../widgets/gauge_widget.dart';
 import '../widgets/line_chart_widget.dart';
 
-/// Detailed view for a single PLC device.
-/// Shows all 8 registers with individual gauges and charts.
+/// Detailed view for a PLC device — shows all registers with gauges & charts.
+/// Includes a device switcher so the user can flip between PLCs.
 class PlcDetailScreen extends StatelessWidget {
   final DashboardStore store;
 
@@ -18,110 +18,186 @@ class PlcDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: HmiColors.void_,
-      appBar: AppBar(
-        title: Text(
-          'PLC-01  Reactor',
-          style: GoogleFonts.outfit(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: HmiColors.textPrimary,
+      body: Observer(
+        builder: (_) {
+          final devices = store.devices;
+          final activeId = store.activeDeviceId;
+          final activeDevice = store.activeDevice;
+
+          return Column(
+            children: [
+              // ── Device Selector Header ──
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: HmiColors.surface,
+                  border: Border(
+                    bottom:
+                        BorderSide(color: HmiColors.surfaceBorder, width: 1),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.precision_manufacturing_rounded,
+                            size: 20, color: HmiColors.accent),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            activeDevice?.name ?? activeId,
+                            style: GoogleFonts.outfit(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: HmiColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (activeDevice != null)
+                          _connectionBadge(activeDevice.isConnected),
+                      ],
+                    ),
+                    if (devices.length > 1) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 34,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: devices.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 8),
+                          itemBuilder: (ctx, i) {
+                            final dev = devices[i];
+                            final isActive = dev.id == activeId;
+                            return _deviceTab(
+                              dev.name,
+                              dev.protocol.toUpperCase(),
+                              isActive,
+                              dev.isConnected,
+                              () => store.switchDevice(dev.id),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              // ── Main Content ──
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    _sectionHeader('Live Gauges'),
+                    const SizedBox(height: 12),
+                    _buildGauges(),
+                    const SizedBox(height: 24),
+                    _sectionHeader('Register Trends'),
+                    const SizedBox(height: 8),
+                    ..._buildCharts(),
+                    const SizedBox(height: 32),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _connectionBadge(bool connected) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: (connected ? HmiColors.healthy : HmiColors.danger)
+            .withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: (connected ? HmiColors.healthy : HmiColors.danger)
+              .withValues(alpha: 0.4),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: connected ? HmiColors.healthy : HmiColors.danger,
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            connected ? 'ONLINE' : 'OFFLINE',
+            style: GoogleFonts.dmMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: connected ? HmiColors.healthy : HmiColors.danger,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _deviceTab(
+    String name,
+    String protocol,
+    bool isActive,
+    bool isConnected,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive
+              ? HmiColors.accent.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isActive
+                ? HmiColors.accent.withValues(alpha: 0.5)
+                : Colors.white.withValues(alpha: 0.1),
           ),
         ),
-        backgroundColor: HmiColors.void_,
-      ),
-      body: Observer(
-        builder: (_) => ListView(
-          padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Gauge Row: Temp + Pressure ──────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                GaugeWidget(
-                  label: 'Temperature',
-                  value: store.temperature,
-                  unit: '°C',
-                  min: 0,
-                  max: 120,
-                  warningThreshold: 80,
-                  dangerThreshold: 100,
-                  size: 140,
-                ),
-                GaugeWidget(
-                  label: 'Pressure',
-                  value: store.pressure,
-                  unit: 'mbar',
-                  min: 800,
-                  max: 1200,
-                  warningThreshold: 1100,
-                  dangerThreshold: 1150,
-                  size: 140,
-                ),
-              ],
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isConnected ? HmiColors.healthy : HmiColors.danger,
+              ),
             ),
-            const SizedBox(height: 16),
-
-            // ── Gauge Row: Humidity + Flow ──────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                GaugeWidget(
-                  label: 'Humidity',
-                  value: store.humidity,
-                  unit: '%',
-                  min: 0,
-                  max: 100,
-                  warningThreshold: 70,
-                  dangerThreshold: 85,
-                  size: 140,
-                ),
-                GaugeWidget(
-                  label: 'Flow Rate',
-                  value: store.flowRate,
-                  unit: 'L/min',
-                  min: 0,
-                  max: 200,
-                  warningThreshold: 150,
-                  dangerThreshold: 180,
-                  size: 140,
-                ),
-              ],
+            const SizedBox(width: 6),
+            Text(
+              name,
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                color: isActive ? HmiColors.accent : HmiColors.textSecondary,
+              ),
             ),
-            const SizedBox(height: 16),
-
-            // ── Gauge Row: Agitator + pH ────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                GaugeWidget(
-                  label: 'Agitator',
-                  value: store.agitatorSpeed,
-                  unit: 'RPM',
-                  min: 0,
-                  max: 500,
-                  warningThreshold: 300,
-                  dangerThreshold: 400,
-                  size: 140,
-                ),
-                GaugeWidget(
-                  label: 'pH',
-                  value: store.pH,
-                  unit: '',
-                  min: 0,
-                  max: 14,
-                  warningThreshold: 9,
-                  dangerThreshold: 11,
-                  size: 140,
-                ),
-              ],
+            const SizedBox(width: 6),
+            Text(
+              protocol,
+              style: GoogleFonts.dmMono(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: HmiColors.textMuted,
+              ),
             ),
-            const SizedBox(height: 24),
-
-            // ── All Register Charts ─────────────────────────────────
-            _sectionHeader('Register Trends'),
-            const SizedBox(height: 8),
-            ..._buildCharts(),
-            const SizedBox(height: 32),
           ],
         ),
       ),
@@ -139,25 +215,67 @@ class PlcDetailScreen extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildCharts() {
-    final registers = [
-      (1028, 'Temperature (°C)', '°C', HmiColors.accent),
-      (1029, 'Pressure (mbar)', 'mbar', HmiColors.info),
-      (1030, 'Humidity (%)', '%', HmiColors.info),
-      (1031, 'Flow Rate (L/min)', 'L/min', HmiColors.healthy),
-      (1034, 'Agitator (RPM)', 'RPM', HmiColors.warning),
+  Widget _buildGauges() {
+    final gaugeConfigs = [
+      ('temperature', () => store.temperature, 0.0, 120.0, 80.0, 100.0),
+      ('pressure', () => store.pressure, 800.0, 1600.0, 1100.0, 1300.0),
+      ('humidity', () => store.humidity, 0.0, 100.0, 70.0, 85.0),
+      ('flowRate', () => store.flowRate, 0.0, 200.0, 150.0, 180.0),
+      ('agitatorSpeed', () => store.agitatorSpeed, 0.0, 600.0, 400.0, 500.0),
+      ('pH', () => store.pH, 0.0, 14.0, 9.0, 11.0),
     ];
 
-    return registers.map((r) {
-      final (reg, label, unit, color) = r;
-      final history = store.registerHistory[reg]?.toList() ?? [];
+    final rows = <Widget>[];
+    for (var i = 0; i < gaugeConfigs.length; i += 3) {
+      final rowItems = gaugeConfigs.skip(i).take(3).toList();
+      rows.add(
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: rowItems.map((g) {
+            final (key, getValue, min, max, warn, danger) = g;
+            final reg = store.config.registerByKey(key);
+            return GaugeWidget(
+              label: reg?.label ?? key,
+              value: getValue(),
+              unit: reg?.unit ?? '',
+              min: min,
+              max: max,
+              warningThreshold: warn,
+              dangerThreshold: danger,
+              size: 130,
+            );
+          }).toList(),
+        ),
+      );
+      if (i + 3 < gaugeConfigs.length) {
+        rows.add(const SizedBox(height: 16));
+      }
+    }
+    return Column(children: rows);
+  }
+
+  List<Widget> _buildCharts() {
+    final chartKeys = [
+      'temperature',
+      'pressure',
+      'humidity',
+      'flowRate',
+      'agitatorSpeed',
+    ];
+    return chartKeys.map((key) {
+      final reg = store.config.registerByKey(key);
+      if (reg == null) return const SizedBox.shrink();
+      final history = store.registerHistory[reg.address]?.toList() ?? [];
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: LiveLineChart(
-          title: label,
-          values: history.map((d) => d.value).toList(),
-          unit: unit,
-          lineColor: color,
+          title: '${reg.label} (${reg.unit})',
+          values: history.map((d) {
+            final v = d.value;
+            return reg.divisor != 1 ? v / reg.divisor : v;
+          }).toList(),
+          unit: reg.unit,
+          lineColor: reg.color,
           height: 160,
         ),
       );

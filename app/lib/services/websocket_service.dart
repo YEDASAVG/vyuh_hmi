@@ -11,6 +11,9 @@ class WebSocketService {
   final String url;
   final Duration reconnectDelay;
 
+  /// JWT token appended as ?token= query param for auth.
+  String? authToken;
+
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   Timer? _reconnectTimer;
@@ -30,7 +33,11 @@ class WebSocketService {
   WebSocketService({
     this.url = 'ws://127.0.0.1:3000/ws',
     this.reconnectDelay = const Duration(seconds: 3),
+    this.authToken,
   });
+
+  /// Set auth token (called after login).
+  void setAuthToken(String? token) => authToken = token;
 
   /// Start the connection.
   void connect() {
@@ -40,8 +47,12 @@ class WebSocketService {
 
   Future<void> _doConnect() async {
     try {
-      final uri = Uri.parse(url);
-      _channel = WebSocketChannel.connect(uri);
+      // Append token as query parameter for WebSocket auth
+      var wsUri = Uri.parse(url);
+      if (authToken != null) {
+        wsUri = wsUri.replace(queryParameters: {'token': authToken!});
+      }
+      _channel = WebSocketChannel.connect(wsUri);
 
       // Wait for the actual WebSocket handshake to complete.
       await _channel!.ready;
