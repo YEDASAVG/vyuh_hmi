@@ -28,10 +28,9 @@ fn main() {
     // Init logging via env_logger (set RUST_LOG=info to see output)
     let _ = opcua::console_logging::init();
 
-    // Detect the machine's LAN IP address so the OPC UA endpoint URL is
-    // routable from other machines on the network. We use the UDP socket
-    // trick: connect a UDP socket to a public IP (doesn't actually send
-    // anything) and then read back the local address chosen by the OS.
+    // Detect the machine's LAN IP for discovery URLs so remote clients
+    // can find us, but bind to 0.0.0.0 so we accept connections on ALL
+    // interfaces (loopback 127.0.0.1 + LAN + any other).
     let local_ip = (|| -> Option<String> {
         let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
         socket.connect("8.8.8.8:80").ok()?;
@@ -41,15 +40,19 @@ fn main() {
     .unwrap_or_else(|| "127.0.0.1".to_string());
 
     println!("Detected LAN IP: {local_ip}");
+    println!("Binding to: 0.0.0.0:4840 (all interfaces)");
 
     // ── Build server (anonymous access, no encryption) ──
-    // Use the LAN IP for host_and_port so BOTH the TCP endpoint URLs
-    // AND the discovery URLs are routable from remote clients.
+    // Bind to 0.0.0.0 so both 127.0.0.1 and LAN IP connections work.
+    // Discovery URLs include both localhost and LAN IP.
     let mut server = ServerBuilder::new_anonymous("OPC UA Pharma Simulator")
         .application_uri("urn:VyuhPharmaSim")
         .product_uri("urn:VyuhPharmaSim")
-        .host_and_port(&local_ip, 4840)
-        .discovery_urls(vec![format!("opc.tcp://{}:4840/", local_ip)])
+        .host_and_port("0.0.0.0", 4840)
+        .discovery_urls(vec![
+            format!("opc.tcp://127.0.0.1:4840/"),
+            format!("opc.tcp://{}:4840/", local_ip),
+        ])
         .create_sample_keypair(true)
         .pki_dir("./opcua-pki-sim")
         .discovery_server_url(None)
@@ -193,12 +196,14 @@ fn main() {
         });
     }
 
-    println!("╔══════════════════════════════════════════════════╗");
-    println!("║  OPC UA Pharma Simulator — Sterile Filling Line ║");
-    println!("║  Endpoint: opc.tcp://127.0.0.1:4840/            ║");
-    println!("║  Namespace: urn:pharma-sim (ns=2)               ║");
-    println!("║  Nodes: ns=2;i=1028..1035 (8 registers)        ║");
-    println!("╚══════════════════════════════════════════════════╝");
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║  OPC UA Pharma Simulator — Sterile Filling Line            ║");
+    println!("║  Listening: 0.0.0.0:4840 (all interfaces)                  ║");
+    println!("║  Connect via: opc.tcp://127.0.0.1:4840/                    ║");
+    println!("║            or opc.tcp://{}:4840/", local_ip);
+    println!("║  Namespace: urn:pharma-sim (ns=2)                          ║");
+    println!("║  Nodes: ns=2;i=1028..1035 (8 registers)                   ║");
+    println!("╚══════════════════════════════════════════════════════════════╝");
 
     server.run();
 }

@@ -215,7 +215,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: devices.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (ctx, i) {
                     final dev = devices[i];
                     final isActive = dev.id == _selectedDeviceId;

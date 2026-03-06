@@ -11,6 +11,23 @@ import '../widgets/alarm_banner_widget.dart';
 
 part 'dashboard_store.g.dart';
 
+// ── Per-Device Data Cache ─────────────────────────────────────────
+/// Holds all sensor data, history, and alarm state for a single device.
+/// Data keeps accumulating even when the device is not actively displayed.
+class DeviceDataCache {
+  final Map<int, double> liveValues = {};
+  final Map<int, List<PlcData>> registerHistory = {};
+  double temperature = 0;
+  double pressure = 0;
+  double humidity = 0;
+  double flowRate = 0;
+  double agitatorSpeed = 0;
+  double pH = 0;
+  BatchState batchState = BatchState.idle;
+  double batchProgress = 0;
+  List<Alarm> alarms = [];
+}
+
 // ignore: library_private_types_in_public_api
 class DashboardStore = _DashboardStore with _$DashboardStore;
 
@@ -19,6 +36,10 @@ abstract class _DashboardStore with Store {
   final ApiService _api;
   final DashboardConfig config;
   StreamSubscription? _wsSub;
+  Timer? _devicePollTimer;
+
+  /// Per-device data cache — accumulates data for ALL devices in background.
+  final Map<String, DeviceDataCache> _deviceCache = {};
 
   /// Public access to the API service (for injecting auth token).
   ApiService get api => _api;
@@ -32,6 +53,11 @@ abstract class _DashboardStore with Store {
     ApiService? api,
   })  : _ws = ws ?? WebSocketService(url: config.server.wsUrl),
         _api = api ?? ApiService(baseUrl: config.server.httpUrl);
+
+  /// Get or create the cache for a device.
+  DeviceDataCache _cacheFor(String deviceId) {
+    return _deviceCache.putIfAbsent(deviceId, () => DeviceDataCache());
+  }
 
   // ── Connection State ──────────────────────────────────────────────
 
@@ -134,6 +160,19 @@ abstract class _DashboardStore with Store {
     _ws.onConnectionChanged = _onWsConnectionChanged;
     _ws.connect();
     _wsSub = _ws.stream.listen(_onData);
+
+    // Poll device list every 5 s so isConnected status stays fresh.
+    _devicePollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _refreshDevices();
+    });
+  }
+
+  @action
+  Future<void> _refreshDevices() async {
+    try {
+      final deviceList = await _api.getDevices();
+      devices = ObservableList.of(deviceList);
+    } catch (_) {}
   }
 
   @action
@@ -143,35 +182,81 @@ abstract class _DashboardStore with Store {
   }
 
   /// Switch the dashboard to show data from a different device.
+  /// Restores cached values instantly — no zeros, no delay.
   @action
   void switchDevice(String deviceId) {
+    if (deviceId == activeDeviceId) return;
+
     activeDeviceId = deviceId;
-    // Clear live values and history so stale data doesn't persist.
-    liveValues.clear();
-    registerHistory.clear();
-    temperature = 0;
-    pressure = 0;
-    humidity = 0;
-    flowRate = 0;
-    agitatorSpeed = 0;
-    pH = 0;
-    batchState = BatchState.idle;
-    batchProgress = 0;
-    activeAlarms.clear();
+
+    // Restore from cache (or empty defaults if first visit).
+    final cache = _cacheFor(deviceId);
+    _restoreFromCache(cache);
+  }
+
+  /// Populate all observable fields from a device cache.
+  @action
+  void _restoreFromCache(DeviceDataCache cache) {
+    // Live register values.
+    liveValues = ObservableMap.of(cache.liveValues);
+
+    // Register history.
+    registerHistory = ObservableMap.of(
+      cache.registerHistory.map(
+        (k, v) => MapEntry(k, ObservableList.of(v)),
+      ),
+    );
+
+    // Named display values.
+    temperature = cache.temperature;
+    pressure = cache.pressure;
+    humidity = cache.humidity;
+    flowRate = cache.flowRate;
+    agitatorSpeed = cache.agitatorSpeed;
+    pH = cache.pH;
+    batchState = cache.batchState;
+    batchProgress = cache.batchProgress;
+    activeAlarms = ObservableList.of(cache.alarms);
   }
 
   @action
   void _onData(PlcData data) {
-    // Only process data for the active device.
-    if (data.deviceId != activeDeviceId) return;
-
+    final deviceId = data.deviceId;
     final reg = data.register;
     final val = data.value;
 
+    // ── Always update the device's cache (even if not active) ──
+    final cache = _cacheFor(deviceId);
+    cache.liveValues[reg] = val;
+
+    // Update named cache values from config register definitions.
+    final regConfig = config.registerByAddress(reg);
+    if (regConfig != null) {
+      final applied = regConfig.applyDivisor(val);
+      switch (regConfig.key) {
+        case 'temperature': cache.temperature = applied;
+        case 'pressure': cache.pressure = applied;
+        case 'humidity': cache.humidity = applied;
+        case 'flowRate': cache.flowRate = applied;
+        case 'batchState': cache.batchState = BatchState.fromCode(val.toInt());
+        case 'batchProgress': cache.batchProgress = applied;
+        case 'agitatorSpeed': cache.agitatorSpeed = applied;
+        case 'pH': cache.pH = applied;
+      }
+    }
+
+    // Append to cache history.
+    final cacheHistory = cache.registerHistory.putIfAbsent(reg, () => []);
+    cacheHistory.add(data);
+    if (cacheHistory.length > maxHistoryPoints) {
+      cacheHistory.removeAt(0);
+    }
+
+    // ── Only update display observables for the active device ──
+    if (deviceId != activeDeviceId) return;
+
     liveValues[reg] = val;
 
-    // Update named observables from config register definitions.
-    final regConfig = config.registerByAddress(reg);
     if (regConfig != null) {
       final applied = regConfig.applyDivisor(val);
       switch (regConfig.key) {
@@ -186,7 +271,7 @@ abstract class _DashboardStore with Store {
       }
     }
 
-    // Append to history.
+    // Append to observable history.
     if (!registerHistory.containsKey(reg)) {
       registerHistory[reg] = ObservableList<PlcData>();
     }
@@ -196,7 +281,7 @@ abstract class _DashboardStore with Store {
       history.removeAt(0);
     }
 
-    // Check alarm thresholds from config.
+    // Check alarm thresholds.
     _checkAlarms();
   }
 
@@ -336,6 +421,9 @@ abstract class _DashboardStore with Store {
     }
 
     activeAlarms = ObservableList.of(newAlarms);
+
+    // Persist alarms into the device cache so switching back restores them.
+    _cacheFor(activeDeviceId).alarms = List.of(newAlarms);
   }
 
   @action
@@ -352,6 +440,7 @@ abstract class _DashboardStore with Store {
   }
 
   void dispose() {
+    _devicePollTimer?.cancel();
     _wsSub?.cancel();
     _ws.dispose();
   }

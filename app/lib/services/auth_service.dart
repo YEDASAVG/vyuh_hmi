@@ -187,8 +187,19 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// Logout — clear token.
+  /// Logout — revoke session on server and clear local token.
   Future<void> logout() async {
+    // Notify server to revoke the session
+    if (_currentUser != null) {
+      try {
+        await http.post(
+          Uri.parse('$baseUrl/api/auth/logout'),
+          headers: authHeaders,
+        ).timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // Best-effort — continue with local logout even if server unreachable
+      }
+    }
     _currentUser = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_user');

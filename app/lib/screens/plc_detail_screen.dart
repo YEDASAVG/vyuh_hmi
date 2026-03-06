@@ -67,7 +67,7 @@ class PlcDetailScreen extends StatelessWidget {
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: devices.length,
-                          separatorBuilder: (_, __) =>
+                          separatorBuilder: (_, _) =>
                               const SizedBox(width: 8),
                           itemBuilder: (ctx, i) {
                             final dev = devices[i];
@@ -95,6 +95,10 @@ class PlcDetailScreen extends StatelessWidget {
                     _sectionHeader('Live Gauges'),
                     const SizedBox(height: 12),
                     _buildGauges(),
+                    const SizedBox(height: 24),
+                    _sectionHeader('Write Controls'),
+                    const SizedBox(height: 8),
+                    _buildWriteControls(),
                     const SizedBox(height: 24),
                     _sectionHeader('Register Trends'),
                     const SizedBox(height: 8),
@@ -204,6 +208,42 @@ class PlcDetailScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildWriteControls() {
+    final writable = store.config.registers
+        .where((r) => r.writable)
+        .toList();
+    if (writable.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: HmiColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: HmiColors.surfaceBorder),
+        ),
+        child: Text(
+          'No writable registers on this device',
+          style: GoogleFonts.outfit(fontSize: 13, color: HmiColors.textMuted),
+        ),
+      );
+    }
+    return Column(
+      children: writable.map((reg) {
+        final current = store.liveValues[reg.address] ?? 0;
+        final display = reg.divisor != 1
+            ? (current / reg.divisor).toStringAsFixed(1)
+            : current.toInt().toString();
+        return _WriteRegisterTile(
+          label: reg.label,
+          unit: reg.unit,
+          address: reg.address,
+          currentDisplay: display,
+          isWriting: store.isWriting,
+          onWrite: (value) => store.writeRegister(register: reg.address, value: value),
+        );
+      }).toList(),
+    );
+  }
+
   Widget _sectionHeader(String title) {
     return Text(
       title,
@@ -280,5 +320,151 @@ class PlcDetailScreen extends StatelessWidget {
         ),
       );
     }).toList();
+  }
+}
+
+// ── Inline Write Control ─────────────────────────────────────────────
+
+class _WriteRegisterTile extends StatefulWidget {
+  final String label;
+  final String unit;
+  final int address;
+  final String currentDisplay;
+  final bool isWriting;
+  final Future<void> Function(int value) onWrite;
+
+  const _WriteRegisterTile({
+    required this.label,
+    required this.unit,
+    required this.address,
+    required this.currentDisplay,
+    required this.isWriting,
+    required this.onWrite,
+  });
+
+  @override
+  State<_WriteRegisterTile> createState() => _WriteRegisterTileState();
+}
+
+class _WriteRegisterTileState extends State<_WriteRegisterTile> {
+  final _ctrl = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final val = int.tryParse(_ctrl.text.trim());
+    if (val == null) return;
+    setState(() => _busy = true);
+    await widget.onWrite(val);
+    if (mounted) {
+      setState(() => _busy = false);
+      _ctrl.clear();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: HmiColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: HmiColors.surfaceBorder),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.label,
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: HmiColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Reg ${widget.address}  ·  NOW: ${widget.currentDisplay} ${widget.unit}',
+                  style: GoogleFonts.dmMono(
+                    fontSize: 10,
+                    color: HmiColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 80,
+            height: 34,
+            child: TextField(
+              controller: _ctrl,
+              keyboardType: TextInputType.number,
+              style: GoogleFonts.dmMono(
+                fontSize: 13,
+                color: HmiColors.textPrimary,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                hintText: 'value',
+                hintStyle: GoogleFonts.dmMono(
+                  fontSize: 11,
+                  color: HmiColors.textMuted,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: HmiColors.surfaceBorder),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: HmiColors.surfaceBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide:
+                      const BorderSide(color: HmiColors.accent, width: 1.5),
+                ),
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+          ),
+          const SizedBox(width: 6),
+          SizedBox(
+            height: 34,
+            child: FilledButton(
+              onPressed: _busy || widget.isWriting ? null : _submit,
+              style: FilledButton.styleFrom(
+                backgroundColor: HmiColors.accent,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              child: _busy
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text('WRITE',
+                      style: GoogleFonts.dmMono(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      )),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

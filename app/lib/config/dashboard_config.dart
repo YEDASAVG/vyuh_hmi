@@ -70,12 +70,20 @@ class ServerConfig {
   final String httpUrl;
   final String wsUrl;
 
-  const ServerConfig({required this.httpUrl, required this.wsUrl});
+  /// Inactivity timeout in minutes. 0 = disabled. Default 30.
+  final int sessionTimeoutMinutes;
+
+  const ServerConfig({
+    required this.httpUrl,
+    required this.wsUrl,
+    this.sessionTimeoutMinutes = 30,
+  });
 
   factory ServerConfig.fromJson(Map<String, dynamic> json) {
     return ServerConfig(
       httpUrl: json['httpUrl'] as String,
       wsUrl: json['wsUrl'] as String,
+      sessionTimeoutMinutes: json['sessionTimeoutMinutes'] as int? ?? 30,
     );
   }
 }
@@ -303,8 +311,9 @@ class BatchStateConfig {
 class ControlsConfig {
   final EmergencyStopConfig? emergencyStop;
   final AgitatorConfig? agitator;
+  final List<SetpointConfig> setpoints;
 
-  const ControlsConfig({this.emergencyStop, this.agitator});
+  const ControlsConfig({this.emergencyStop, this.agitator, this.setpoints = const []});
 
   factory ControlsConfig.fromJson(Map<String, dynamic> json) {
     return ControlsConfig(
@@ -315,6 +324,10 @@ class ControlsConfig {
       agitator: json['agitator'] != null
           ? AgitatorConfig.fromJson(json['agitator'] as Map<String, dynamic>)
           : null,
+      setpoints: (json['setpoints'] as List<dynamic>?)
+              ?.map((e) => SetpointConfig.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 }
@@ -356,5 +369,47 @@ class AgitatorConfig {
       min: json['min'] as int? ?? 0,
       max: json['max'] as int? ?? 500,
     );
+  }
+}
+
+class SetpointConfig {
+  final int register;
+  final String key;
+  final String label;
+  final String unit;
+  final int min;
+  final int max;
+  final int step;
+  final double divisor;
+
+  const SetpointConfig({
+    required this.register,
+    required this.key,
+    required this.label,
+    this.unit = '',
+    this.min = 0,
+    this.max = 100,
+    this.step = 1,
+    this.divisor = 1,
+  });
+
+  factory SetpointConfig.fromJson(Map<String, dynamic> json) {
+    return SetpointConfig(
+      register: json['register'] as int,
+      key: json['key'] as String,
+      label: json['label'] as String,
+      unit: json['unit'] as String? ?? '',
+      min: json['min'] as int? ?? 0,
+      max: json['max'] as int? ?? 100,
+      step: json['step'] as int? ?? 1,
+      divisor: (json['divisor'] as num?)?.toDouble() ?? 1,
+    );
+  }
+
+  /// Display value (after divisor) for a raw register value.
+  String formatValue(double raw) {
+    final v = raw / divisor;
+    if (divisor > 1) return v.toStringAsFixed(1);
+    return v.toInt().toString();
   }
 }

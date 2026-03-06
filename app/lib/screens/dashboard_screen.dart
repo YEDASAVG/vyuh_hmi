@@ -6,22 +6,30 @@ import '../config/dashboard_config.dart';
 import '../config/hmi_theme_engine.dart';
 import '../config/widget_registry.dart';
 import '../models/plc_data.dart';
+import '../services/auth_service.dart';
 import '../stores/dashboard_store.dart';
 import '../widgets/batch_state_widget.dart';
 import '../widgets/connection_status_bar.dart';
 import '../widgets/control_toggle_widget.dart';
+import '../widgets/esig_dialog.dart';
 
 class DashboardScreen extends StatelessWidget {
   final DashboardStore store;
   final DashboardConfig config;
   /// User role — controls are hidden for 'viewer'.
   final String userRole;
+  /// Auth service for e-signature verification on critical writes.
+  final AuthService? authService;
+  /// Navigate to the Devices tab to add/discover PLCs.
+  final VoidCallback? onNavigateToDevices;
 
   const DashboardScreen({
     super.key,
     required this.store,
     required this.config,
     this.userRole = 'viewer',
+    this.authService,
+    this.onNavigateToDevices,
   });
 
   bool get _canControl => userRole == 'admin' || userRole == 'operator';
@@ -42,11 +50,26 @@ class DashboardScreen extends StatelessWidget {
                   isWsConnected: store.isWsConnected,
                   alarms: store.activeAlarms.toList(),
                 ),
-                _DeviceSwitcherBar(store: store, colors: colors),
+                _DeviceSwitcherBar(
+                  store: store,
+                  colors: colors,
+                  onAddDevice: onNavigateToDevices,
+                ),
                 Expanded(
-                  child: isWide
-                      ? _wideLayout(constraints, colors)
-                      : _narrowLayout(colors),
+                  child: Stack(
+                    children: [
+                      isWide
+                          ? _wideLayout(constraints, colors)
+                          : _narrowLayout(colors),
+                      // OFFLINE overlay — shown when the active device is disconnected.
+                      if (store.activeDevice?.isConnected == false)
+                        _OfflineBanner(
+                          deviceName: store.activeDevice!.name,
+                          onReconnect: onNavigateToDevices,
+                          colors: colors,
+                        ),
+                    ],
+                  ),
                 ),
               ],
             );
@@ -165,7 +188,8 @@ class DashboardScreen extends StatelessWidget {
   // ── Control Panel (config-driven) ────────────────────────────────
 
   Widget _buildControlPanel(ThemeConfig colors) {
-    return Container(
+    return Builder(
+      builder: (context) => Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colors.surface,
@@ -204,8 +228,37 @@ class DashboardScreen extends StatelessWidget {
                     currentRpm: store.agitatorSpeed,
                     isOverridden: store.agitatorOverrideActive,
                     isLoading: store.isWriting,
-                    onSetRpm: (rpm) => store.setAgitatorRpm(rpm),
-                    onClearOverride: () => store.clearAgitatorOverride(),
+                    onSetRpm: (rpm) => _withEsig(
+                      context,
+                      'Set Agitator RPM to $rpm',
+                      () => store.setAgitatorRpm(rpm),
+                    ),
+                    onClearOverride: () => _withEsig(
+                      context,
+                      'Clear Agitator Override',
+                      () => store.clearAgitatorOverride(),
+                    ),
+                  ),
+                ),
+              // ── Setpoint Controls (config-driven) ──
+              for (final sp in config.dashboard.controls?.setpoints ?? [])
+                SizedBox(
+                  width: 300,
+                  child: _SetpointSlider(
+                    config: sp,
+                    currentValue: store.liveValues[sp.register] ?? 0,
+                    isLoading: store.isWriting,
+                    colors: colors,
+                    onSet: (value) => _withEsig(
+                      context,
+                      'Set ${sp.label} to ${sp.divisor > 1 ? (value / sp.divisor).toStringAsFixed(1) : value.toString()} ${sp.unit}',
+                      () => store.writeRegister(register: sp.register, value: value),
+                    ),
+                    onClear: () => _withEsig(
+                      context,
+                      'Clear ${sp.label} override',
+                      () => store.writeRegister(register: sp.register, value: 0),
+                    ),
                   ),
                 ),
               if (config.dashboard.controls?.emergencyStop != null)
@@ -216,13 +269,21 @@ class DashboardScreen extends StatelessWidget {
                     children: [
                       EmergencyStopButton(
                         isLoading: store.isWriting,
-                        onPressed: () => store.emergencyStop(),
+                        onPressed: () => _withEsig(
+                          context,
+                          'Emergency Stop — Force Batch to IDLE',
+                          () => store.emergencyStop(),
+                        ),
                       ),
                       const SizedBox(height: 8),
                       _RestartBatchButton(
                         isLoading: store.isWriting,
                         isIdle: store.batchState == BatchState.idle,
-                        onPressed: () => store.restartBatch(),
+                        onPressed: () => _withEsig(
+                          context,
+                          'Restart Batch',
+                          () => store.restartBatch(),
+                        ),
                       ),
                       if (store.lastWriteError != null) ...[
                         const SizedBox(height: 8),
@@ -244,7 +305,26 @@ class DashboardScreen extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
+  }
+
+  /// Gate a critical action behind electronic signature verification.
+  /// If no [authService] is provided, falls through directly (dev mode).
+  Future<void> _withEsig(
+    BuildContext context,
+    String action,
+    Future<bool> Function() execute,
+  ) async {
+    if (authService != null) {
+      final verified = await ESignatureDialog.show(
+        context,
+        authService: authService!,
+        action: action,
+      );
+      if (!verified) return; // user cancelled or failed
+    }
+    await execute();
   }
 
   /// Insert separator widgets between items.
@@ -263,7 +343,7 @@ class DashboardScreen extends StatelessWidget {
 class _RestartBatchButton extends StatelessWidget {
   final bool isLoading;
   final bool isIdle;
-  final VoidCallback onPressed;
+  final Future<void> Function() onPressed;
 
   const _RestartBatchButton({
     required this.isLoading,
@@ -372,8 +452,197 @@ class _RestartBatchButton extends StatelessWidget {
     );
 
     if (confirmed == true) {
-      onPressed();
+      await onPressed();
     }
+  }
+}
+
+// ── Setpoint Slider Widget ──────────────────────────────────────────
+
+class _SetpointSlider extends StatefulWidget {
+  final SetpointConfig config;
+  final double currentValue;
+  final bool isLoading;
+  final ThemeConfig colors;
+  final Future<void> Function(int value) onSet;
+  final Future<void> Function() onClear;
+
+  const _SetpointSlider({
+    required this.config,
+    required this.currentValue,
+    required this.isLoading,
+    required this.colors,
+    required this.onSet,
+    required this.onClear,
+  });
+
+  @override
+  State<_SetpointSlider> createState() => _SetpointSliderState();
+}
+
+class _SetpointSliderState extends State<_SetpointSlider> {
+  double _pending = 0;
+  bool _isDragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pending = widget.currentValue.clamp(
+      widget.config.min.toDouble(),
+      widget.config.max.toDouble(),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _SetpointSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isDragging && oldWidget.currentValue != widget.currentValue) {
+      _pending = widget.currentValue.clamp(
+        widget.config.min.toDouble(),
+        widget.config.max.toDouble(),
+      );
+    }
+  }
+
+  String _displayValue(double raw) {
+    if (widget.config.divisor > 1) {
+      return (raw / widget.config.divisor).toStringAsFixed(1);
+    }
+    return raw.toInt().toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sp = widget.config;
+    final colors = widget.colors;
+    final current = _displayValue(widget.currentValue);
+    final pending = _displayValue(_pending);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.surfaceBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.tune_rounded, size: 16, color: colors.accent),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  sp.label,
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                'NOW: $current ${sp.unit}',
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 10,
+                  fontFamily: 'DM Mono',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Text(
+                _displayValue(sp.min.toDouble()),
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 10,
+                  fontFamily: 'DM Mono',
+                ),
+              ),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    activeTrackColor: colors.accent,
+                    inactiveTrackColor: colors.surfaceBorder,
+                    thumbColor: colors.accent,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                    trackHeight: 4,
+                  ),
+                  child: Slider(
+                    value: _pending,
+                    min: sp.min.toDouble(),
+                    max: sp.max.toDouble(),
+                    divisions: ((sp.max - sp.min) / sp.step).round(),
+                    onChangeStart: (_) => setState(() => _isDragging = true),
+                    onChanged: (v) => setState(() => _pending = v),
+                    onChangeEnd: (_) => setState(() => _isDragging = false),
+                  ),
+                ),
+              ),
+              Text(
+                _displayValue(sp.max.toDouble()),
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 10,
+                  fontFamily: 'DM Mono',
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Text(
+                'SET: $pending ${sp.unit}',
+                style: TextStyle(
+                  color: colors.accent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'DM Mono',
+                ),
+              ),
+              const Spacer(),
+              SizedBox(
+                height: 30,
+                child: TextButton(
+                  onPressed: widget.isLoading ? null : () => widget.onClear(),
+                  style: TextButton.styleFrom(
+                    foregroundColor: colors.textMuted,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  child: const Text('AUTO', style: TextStyle(fontSize: 10, fontFamily: 'DM Mono')),
+                ),
+              ),
+              const SizedBox(width: 4),
+              SizedBox(
+                height: 30,
+                child: FilledButton(
+                  onPressed: widget.isLoading ? null : () => widget.onSet(_pending.round()),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colors.accent,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  child: widget.isLoading
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colors.textPrimary,
+                          ),
+                        )
+                      : const Text('APPLY', style: TextStyle(fontSize: 10, fontFamily: 'DM Mono', fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -382,8 +651,9 @@ class _RestartBatchButton extends StatelessWidget {
 class _DeviceSwitcherBar extends StatelessWidget {
   final DashboardStore store;
   final ThemeConfig colors;
+  final VoidCallback? onAddDevice;
 
-  const _DeviceSwitcherBar({required this.store, required this.colors});
+  const _DeviceSwitcherBar({required this.store, required this.colors, this.onAddDevice});
 
   @override
   Widget build(BuildContext context) {
@@ -462,6 +732,15 @@ class _DeviceSwitcherBar extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onAddDevice != null)
+                IconButton(
+                  icon: Icon(Icons.add_circle_outline_rounded,
+                      size: 20, color: colors.accent),
+                  tooltip: 'Add / Discover PLCs',
+                  onPressed: onAddDevice,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  padding: EdgeInsets.zero,
+                ),
               if (active != null) ...[
                 Container(
                   padding:
@@ -552,8 +831,114 @@ class _DeviceChip extends StatelessWidget {
                   color: isActive ? accentColor : Colors.white70,
                 ),
               ),
+              if (!isConnected) ...[
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(3),
+                    border: Border.all(color: Colors.red.withValues(alpha: 0.5), width: 1),
+                  ),
+                  child: const Text(
+                    'OFFLINE',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 9,
+                      fontFamily: 'DM Mono',
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Offline Overlay ───────────────────────────────────────────────────────────
+
+class _OfflineBanner extends StatelessWidget {
+  final String deviceName;
+  final VoidCallback? onReconnect;
+  final ThemeConfig colors;
+
+  const _OfflineBanner({
+    required this.deviceName,
+    required this.colors,
+    this.onReconnect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.72),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.red.withValues(alpha: 0.15),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.5), width: 2),
+              ),
+              child: const Icon(Icons.link_off_rounded, color: Colors.red, size: 34),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              deviceName.toUpperCase(),
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.red.withValues(alpha: 0.8),
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'DEVICE OFFLINE',
+              style: GoogleFonts.outfit(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Live data is paused. Last known values are shown.',
+              style: GoogleFonts.outfit(
+                fontSize: 13,
+                color: Colors.white54,
+              ),
+            ),
+            const SizedBox(height: 28),
+            if (onReconnect != null)
+              FilledButton.icon(
+                onPressed: onReconnect,
+                style: FilledButton.styleFrom(
+                  backgroundColor: colors.accent,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.link_rounded, size: 18),
+                label: Text(
+                  'GO TO DEVICES',
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

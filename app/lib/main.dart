@@ -5,7 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'config/config_loader.dart';
 import 'config/dashboard_config.dart';
 import 'config/hmi_theme_engine.dart';
+import 'screens/alarm_history_screen.dart';
 import 'screens/audit_trail_screen.dart';
+import 'screens/batch_record_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/device_list_screen.dart';
 import 'screens/history_screen.dart';
@@ -15,6 +17,7 @@ import 'services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/websocket_service.dart';
 import 'stores/dashboard_store.dart';
+import 'widgets/inactivity_detector.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -179,56 +182,74 @@ class _HmiAppState extends State<HmiApp> {
         title: config.name,
         debugShowCheckedModeBanner: false,
         theme: theme,
-        home: Scaffold(
-          body: Column(
-            children: [
-              // ── User bar ──
-              _buildUserBar(config, user),
-              // ── Main content ──
-              Expanded(
-                child: IndexedStack(
-                  index: _currentIndex,
-                  children: [
-                    DashboardScreen(
-                        store: store,
-                        config: config,
-                        userRole: user?.role ?? 'viewer'),
-                    PlcDetailScreen(store: store),
-                    HistoryScreen(store: store),
-                    DeviceListScreen(
-                        api: store.api,
-                        canManage: user?.isOperator ?? false),
-                    AuditTrailScreen(authService: authService),
-                  ],
+        home: InactivityDetector(
+          timeoutMinutes: config.server.sessionTimeoutMinutes,
+          onTimeout: _onLogout,
+          child: Scaffold(
+            body: Column(
+              children: [
+                // ── User bar ──
+                _buildUserBar(config, user),
+                // ── Main content ──
+                Expanded(
+                  child: IndexedStack(
+                    index: _currentIndex,
+                    children: [
+                      DashboardScreen(
+                          store: store,
+                          config: config,
+                          userRole: user?.role ?? 'viewer',
+                          authService: authService,
+                          onNavigateToDevices: () => setState(() => _currentIndex = 5)),
+                      PlcDetailScreen(store: store),
+                      HistoryScreen(store: store),
+                      AlarmHistoryScreen(
+                          api: store.api,
+                          canManage: user?.isOperator ?? false),
+                      BatchRecordScreen(api: store.api),
+                      DeviceListScreen(
+                          api: store.api,
+                          canManage: user?.isOperator ?? false),
+                      AuditTrailScreen(authService: authService),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _currentIndex,
-            onDestinationSelected: (i) => setState(() => _currentIndex = i),
-            destinations: [
-              const NavigationDestination(
-                icon: Icon(Icons.dashboard_rounded),
-                label: 'Dashboard',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.precision_manufacturing_rounded),
-                label: 'PLC Detail',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.history_rounded),
-                label: 'History',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.devices_other_rounded),
-                label: 'Devices',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.security_rounded),
-                label: 'Audit',
-              ),
-            ],
+              ],
+            ),
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: _currentIndex,
+              onDestinationSelected: (i) => setState(() => _currentIndex = i),
+              destinations: [
+                const NavigationDestination(
+                  icon: Icon(Icons.dashboard_rounded),
+                  label: 'Dashboard',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.precision_manufacturing_rounded),
+                  label: 'PLC Detail',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.history_rounded),
+                  label: 'History',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.warning_amber_rounded),
+                  label: 'Alarms',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.assignment_rounded),
+                  label: 'Batches',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.devices_other_rounded),
+                  label: 'Devices',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.security_rounded),
+                  label: 'Audit',
+                ),
+              ],
+            ),
           ),
         ),
       ),

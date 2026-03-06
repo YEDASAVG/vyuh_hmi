@@ -113,7 +113,7 @@ class ApiService {
     }
   }
 
-  /// POST /api/discover — scan network for Modbus devices.
+  /// POST /api/discover — scan network for Modbus + OPC UA devices.
   Future<List<Map<String, dynamic>>> discoverDevices() async {
     try {
       final response = await http
@@ -122,7 +122,7 @@ class ApiService {
             headers: _headers,
             body: jsonEncode(null),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -145,7 +145,7 @@ class ApiService {
     int pollRateMs = 1000,
     int registerStart = 1028,
     int registerCount = 8,
-    List<int> writable = const [1032, 1034],
+    List<int> writable = const [1028, 1031, 1032, 1034, 1035],
   }) async {
     try {
       final response = await http
@@ -191,6 +191,160 @@ class ApiService {
       return false;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// POST /api/devices/:id/connect — reconnect a disconnected device.
+  Future<bool> connectDevice(String deviceId) async {
+    try {
+      final response = await http
+          .post(Uri.parse('$baseUrl/api/devices/$deviceId/connect'), headers: _headers)
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        return body['success'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// POST /api/devices/:id/disconnect — disconnect a connected device.
+  Future<bool> disconnectDevice(String deviceId) async {
+    try {
+      final response = await http
+          .post(Uri.parse('$baseUrl/api/devices/$deviceId/disconnect'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        return body['success'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ── ISA-18.2: Alarm API ─────────────────────────────────────────
+
+  /// GET /api/alarms — list alarms with optional filters.
+  Future<List<Map<String, dynamic>>> getAlarms({
+    String? deviceId,
+    String? state,
+    int? priority,
+    int limit = 200,
+  }) async {
+    try {
+      final params = <String, String>{'limit': limit.toString()};
+      if (deviceId != null) params['device_id'] = deviceId;
+      if (state != null) params['state'] = state;
+      if (priority != null) params['priority'] = priority.toString();
+
+      final uri = Uri.parse('$baseUrl/api/alarms').replace(queryParameters: params);
+      final response = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        if (body['success'] == true && body['data'] != null) {
+          return (body['data'] as List).cast<Map<String, dynamic>>();
+        }
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// POST /api/alarms/:id/ack — acknowledge an alarm.
+  Future<bool> ackAlarm(int alarmId, {String? comment}) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/alarms/$alarmId/ack'),
+            headers: _headers,
+            body: jsonEncode({'comment': comment}),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        return body['success'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// POST /api/alarms/:id/shelve — shelve an alarm temporarily.
+  Future<bool> shelveAlarm(int alarmId, {required int durationMinutes, required String reason}) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/alarms/$alarmId/shelve'),
+            headers: _headers,
+            body: jsonEncode({
+              'duration_minutes': durationMinutes,
+              'reason': reason,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        return body['success'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ── ISA-88: Batch Record API ────────────────────────────────────
+
+  /// GET /api/batches — list batch records.
+  Future<List<Map<String, dynamic>>> getBatches({
+    String? deviceId,
+    String? status,
+    int limit = 100,
+  }) async {
+    try {
+      final params = <String, String>{'limit': limit.toString()};
+      if (deviceId != null) params['device_id'] = deviceId;
+      if (status != null) params['status'] = status;
+
+      final uri = Uri.parse('$baseUrl/api/batches').replace(queryParameters: params);
+      final response = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        if (body['success'] == true && body['data'] != null) {
+          return (body['data'] as List).cast<Map<String, dynamic>>();
+        }
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// GET /api/batches/:id — get batch record with steps.
+  Future<Map<String, dynamic>?> getBatch(String batchId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/api/batches/$batchId'), headers: _headers)
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        if (body['success'] == true && body['data'] != null) {
+          return body['data'] as Map<String, dynamic>;
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 }

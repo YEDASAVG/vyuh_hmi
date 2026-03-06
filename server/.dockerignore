@@ -1,0 +1,5 @@
+target/
+*.db
+*.db-journal
+opcua-pki-sim/
+opcua-pki-client/

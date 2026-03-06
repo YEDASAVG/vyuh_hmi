@@ -5,6 +5,14 @@
 host = "0.0.0.0"
 port = 3000
 
+# JWT signing secret — CHANGE THIS in production! Must be ≥32 chars.
+jwt_secret = "vyuh-hmi-production-secret-change-me-2026"
+
+# TLS (optional) — set both paths to enable HTTPS.
+# Without TLS, the server will start with a security warning.
+# tls_cert = "/path/to/cert.pem"
+# tls_key  = "/path/to/key.pem"
+
 [database]
 path = "hmi_data.db"
 
@@ -20,7 +28,7 @@ protocol = "modbus"
 poll_rate_ms = 1000
 register_start = 1028
 register_count = 8
-writable = [1032, 1034]
+writable = [1028, 1031, 1032, 1034, 1035]
 
 [[devices]]
 id = "plc-02"
@@ -30,15 +38,15 @@ protocol = "modbus"
 poll_rate_ms = 1000
 register_start = 1028
 register_count = 8
-writable = [1032, 1034]
+writable = [1028, 1031, 1032, 1034, 1035]
 
 # Disabled during Phase 8 testing — re-enable when OPC UA sim is stable
 [[devices]]
 id = "plc-03"
 name = "Sterile Filling Line"
-address = "opc.tcp://192.168.0.100:4840/"
+address = "opc.tcp://127.0.0.1:4840/"
 protocol = "opcua"
 poll_rate_ms = 1000
 register_start = 1028
 register_count = 8
-writable = [1032, 1034]
+writable = [1028, 1031, 1032, 1034, 1035]

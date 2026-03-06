@@ -226,7 +226,7 @@ class _IndustrialSwitch extends StatelessWidget {
 /// Emergency stop button — big red button to force batch to IDLE.
 class EmergencyStopButton extends StatelessWidget {
   final bool isLoading;
-  final VoidCallback onPressed;
+  final Future<void> Function() onPressed;
 
   const EmergencyStopButton({
     super.key,
@@ -324,7 +324,7 @@ class EmergencyStopButton extends StatelessWidget {
     );
 
     if (confirmed == true) {
-      onPressed();
+      await onPressed();
     }
   }
 }
@@ -462,9 +462,9 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
                   label: 'SET ${_sliderValue.toInt()} RPM',
                   color: HmiColors.warning,
                   isLoading: widget.isLoading,
-                  onPressed: () {
+                  onPressed: () async {
                     _hasPendingValue = false;
-                    widget.onSetRpm(_sliderValue.toInt());
+                    await widget.onSetRpm(_sliderValue.toInt());
                   },
                 ),
               ),
@@ -474,9 +474,9 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
                   label: 'AUTO',
                   color: HmiColors.textMuted,
                   isLoading: widget.isLoading,
-                  onPressed: () {
+                  onPressed: () async {
                     _hasPendingValue = false;
-                    widget.onClearOverride();
+                    await widget.onClearOverride();
                   },
                 ),
               ],
@@ -492,7 +492,7 @@ class _ActionButton extends StatelessWidget {
   final String label;
   final Color color;
   final bool isLoading;
-  final VoidCallback onPressed;
+  final Future<void> Function() onPressed;
 
   const _ActionButton({
     required this.label,
@@ -506,7 +506,7 @@ class _ActionButton extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: isLoading ? null : onPressed,
+        onTap: isLoading ? null : () async { await onPressed(); },
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),

@@ -1,78 +1,89 @@
 use axum::{
-    extract::{Query, State},
+    extract::State,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
+    response::Response,
 };
 
 use futures::{SinkExt, StreamExt};
-use serde::Deserialize;
 use tracing::{info, warn};
 
 use crate::auth;
 use crate::state::AppState;
 
-#[derive(Deserialize)]
-pub struct WsQuery {
-    pub token: Option<String>,
-}
-
-// Handler for /ws — validates JWT from ?token= query param
-
+/// Handler for /ws — accepts upgrade unconditionally, then authenticates
+/// via the first message (which must be the JWT token).
+///
+/// This avoids leaking the token in the URL / access logs.
 pub async fn ws_handler(
-    Query(query): Query<WsQuery>,
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
 ) -> Response {
-    // Validate token from query parameter
-    let token = match query.token {
-        Some(t) => t,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({ "success": false, "error": "Missing token query parameter" })),
-            )
-                .into_response();
+    ws.on_upgrade(move |socket| handle_socket(socket, state))
+}
+
+/// Actual WebSocket logic — first-message auth, then broadcast data.
+async fn handle_socket(socket: WebSocket, state: AppState) {
+    let (mut sender, mut receiver) = socket.split();
+
+    // ── Step 1: Wait for the first message to be the auth token ──
+    let claims = loop {
+        match tokio::time::timeout(std::time::Duration::from_secs(10), receiver.next()).await {
+            Ok(Some(Ok(Message::Text(text)))) => {
+                let token = text.trim().to_string();
+                match auth::validate_token(&token, &state.jwt_secret) {
+                    Ok(c) => {
+                        // Verify session is still valid
+                        if let Some(ref sid) = c.session_id {
+                            if !auth::is_session_valid(&state, sid).await {
+                                warn!("WebSocket auth failed — session revoked");
+                                let _ = sender.send(Message::Text(
+                                    r#"{"error":"session_revoked"}"#.into(),
+                                )).await;
+                                return;
+                            }
+                        }
+                        // Send auth OK acknowledgement
+                        let _ = sender.send(Message::Text(
+                            r#"{"auth":"ok"}"#.into(),
+                        )).await;
+                        break c;
+                    }
+                    Err(e) => {
+                        warn!("WebSocket auth failed: {}", e);
+                        let _ = sender.send(Message::Text(
+                            format!(r#"{{"error":"auth_failed","detail":"{}"}}"#, e).into(),
+                        )).await;
+                        return;
+                    }
+                }
+            }
+            Ok(Some(Ok(Message::Close(_)))) | Ok(None) => {
+                warn!("WebSocket closed before auth");
+                return;
+            }
+            Err(_) => {
+                warn!("WebSocket auth timed out (10s)");
+                let _ = sender.send(Message::Text(
+                    r#"{"error":"auth_timeout"}"#.into(),
+                )).await;
+                return;
+            }
+            _ => continue, // skip ping/pong/binary
         }
     };
 
-    match auth::validate_token(&token) {
-        Ok(claims) => {
-            info!("WebSocket auth OK for user '{}'", claims.sub);
-            ws.on_upgrade(move |socket| handle_socket(socket, state))
-        }
-        Err(e) => {
-            warn!("WebSocket auth failed: {}", e);
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({ "success": false, "error": e })),
-            )
-                .into_response()
-        }
-    }
-}
+    info!("WebSocket authenticated for user '{}'", claims.sub);
 
-// actual websocket logic
-
-async fn handle_socket(socket: WebSocket, state: AppState){
-    let (mut sender, mut receiver) = socket.split(); // split socket into two parts
-
-    let mut rx = state.tx.subscribe(); // take receiver from boradcast channel
-
-    info!("Websocket Client connected");
-
-    // Task 1: send data from Broadcast -> client
+    // ── Step 2: Normal broadcast loop ──
+    let mut rx = state.tx.subscribe();
 
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             if sender.send(Message::Text(msg.into())).await.is_err() {
-                break; // client disconnected
+                break;
             }
         }
     });
-
-    // Task 2: handle the message came from Client
 
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
@@ -91,5 +102,5 @@ async fn handle_socket(socket: WebSocket, state: AppState){
         _ = &mut recv_task => send_task.abort(),
     }
 
-    warn!("WebSocket client disconnected");
+    warn!("WebSocket client disconnected (user: {})", claims.sub);
 }

@@ -23,8 +23,8 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Simulator (temporary, will be replaced by OPC UA)
-simulator/
+# Runtime
+.vyuh_pids
 
 # IDE
 .idea/
@@ -34,6 +34,9 @@ simulator/
 # OS
 .DS_Store
 Thumbs.db
+
+# Simulator logs
+simulator/*.log
 
 # Documentation (internal notes)
 *.md

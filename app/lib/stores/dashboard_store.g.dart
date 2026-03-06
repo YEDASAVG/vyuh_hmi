@@ -459,6 +459,18 @@ mixin _$DashboardStore on _DashboardStore, Store {
   }
 
   @override
+  void _restoreFromCache(DeviceDataCache cache) {
+    final _$actionInfo = _$_DashboardStoreActionController.startAction(
+      name: '_DashboardStore._restoreFromCache',
+    );
+    try {
+      return super._restoreFromCache(cache);
+    } finally {
+      _$_DashboardStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
+  @override
   void _onData(PlcData data) {
     final _$actionInfo = _$_DashboardStoreActionController.startAction(
       name: '_DashboardStore._onData',

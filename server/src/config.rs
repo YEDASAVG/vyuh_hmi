@@ -13,6 +13,17 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
+    /// JWT signing secret. Must be ≥32 characters.
+    #[serde(default = "default_jwt_secret")]
+    pub jwt_secret: String,
+    /// Optional path to TLS certificate PEM file.
+    pub tls_cert: Option<String>,
+    /// Optional path to TLS private key PEM file.
+    pub tls_key: Option<String>,
+}
+
+fn default_jwt_secret() -> String {
+    "vyuh-hmi-CHANGE-ME-insecure-default".to_string()
 }
 
 /// Database configuration.
@@ -42,7 +53,20 @@ impl AppConfig {
     pub fn load(path: &str) -> Self {
         let content = std::fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("Failed to read config '{}': {}", path, e));
-        toml::from_str(&content)
-            .unwrap_or_else(|e| panic!("Failed to parse config '{}': {}", path, e))
+        let config: Self = toml::from_str(&content)
+            .unwrap_or_else(|e| panic!("Failed to parse config '{}': {}", path, e));
+
+        // Validate JWT secret length for production security
+        if config.server.jwt_secret.len() < 32 {
+            panic!(
+                "jwt_secret must be at least 32 characters (got {}). Update config.toml.",
+                config.server.jwt_secret.len()
+            );
+        }
+        if config.server.jwt_secret.contains("CHANGE-ME") || config.server.jwt_secret.contains("change-me") {
+            tracing::warn!("⚠ jwt_secret contains default placeholder — change it before production!");
+        }
+
+        config
     }
 }

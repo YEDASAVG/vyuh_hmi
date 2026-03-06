@@ -22,15 +22,21 @@ use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use tracing::info;
+use tracing::{info, warn};
 
 // ── Constants ───────────────────────────────────────────────────
 
-/// JWT secret — in production this would come from env/config.
-const JWT_SECRET: &str = "vyuh-hmi-jwt-secret-2026-phase8";
-
 /// Token expiry duration.
 const TOKEN_EXPIRY_HOURS: i64 = 8;
+
+/// Max failed login attempts before lockout.
+const MAX_LOGIN_ATTEMPTS: u32 = 5;
+
+/// Lockout duration after too many failed attempts.
+const LOCKOUT_DURATION_SECS: u64 = 900; // 15 minutes
+
+/// Minimum password length for new users.
+const MIN_PASSWORD_LENGTH: usize = 8;
 
 // ── Data Types ──────────────────────────────────────────────────
 
@@ -80,6 +86,9 @@ pub struct Claims {
     pub user_id: String,   // UUID
     pub exp: usize,        // expiry timestamp
     pub iat: usize,        // issued at
+    /// Session ID for server-side revocation. None for legacy tokens.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 /// User record from the database.
@@ -268,7 +277,8 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 
 // ── JWT ─────────────────────────────────────────────────────────
 
-pub fn create_token(user_id: &str, username: &str, role: &str) -> Result<(String, DateTime<Utc>), String> {
+pub fn create_token(user_id: &str, username: &str, role: &str, secret: &str) -> Result<(String, DateTime<Utc>, String), String> {
+    let session_id = uuid::Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::hours(TOKEN_EXPIRY_HOURS);
     let claims = Claims {
         sub: username.to_string(),
@@ -276,26 +286,111 @@ pub fn create_token(user_id: &str, username: &str, role: &str) -> Result<(String
         user_id: user_id.to_string(),
         exp: expires_at.timestamp() as usize,
         iat: Utc::now().timestamp() as usize,
+        session_id: Some(session_id.clone()),
     };
 
     let token = encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
+        &EncodingKey::from_secret(secret.as_bytes()),
     )
     .map_err(|e| format!("Token creation failed: {e}"))?;
 
-    Ok((token, expires_at))
+    Ok((token, expires_at, session_id))
 }
 
-pub fn validate_token(token: &str) -> Result<Claims, String> {
+pub fn validate_token(token: &str, secret: &str) -> Result<Claims, String> {
     decode::<Claims>(
         token,
-        &DecodingKey::from_secret(JWT_SECRET.as_bytes()),
+        &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::default(),
     )
     .map(|data| data.claims)
     .map_err(|e| format!("Invalid token: {e}"))
+}
+
+// ── Password Complexity ─────────────────────────────────────────
+
+/// Validate password meets 21 CFR Part 11 complexity requirements.
+pub fn validate_password_complexity(password: &str) -> Result<(), String> {
+    if password.len() < MIN_PASSWORD_LENGTH {
+        return Err(format!("Password must be at least {} characters", MIN_PASSWORD_LENGTH));
+    }
+    let has_upper = password.chars().any(|c| c.is_uppercase());
+    let has_lower = password.chars().any(|c| c.is_lowercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    if !has_upper || !has_lower || !has_digit {
+        return Err("Password must contain uppercase, lowercase, and a digit".to_string());
+    }
+    Ok(())
+}
+
+// ── Brute-Force Protection ──────────────────────────────────────
+
+/// Check if a username is currently locked out due to failed attempts.
+/// Returns Ok(()) if allowed, Err(msg) if locked out.
+pub async fn check_login_throttle(state: &crate::state::AppState, username: &str) -> Result<(), String> {
+    let mut attempts = state.login_attempts.lock().await;
+    if let Some((count, first_failure)) = attempts.get(username) {
+        if *count >= MAX_LOGIN_ATTEMPTS {
+            let elapsed = first_failure.elapsed().as_secs();
+            if elapsed < LOCKOUT_DURATION_SECS {
+                let remaining = LOCKOUT_DURATION_SECS - elapsed;
+                return Err(format!("Account locked due to {} failed attempts. Try again in {} seconds.", count, remaining));
+            } else {
+                // Lockout expired — reset
+                attempts.remove(username);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Record a failed login attempt.
+pub async fn record_failed_login(state: &crate::state::AppState, username: &str) {
+    let mut attempts = state.login_attempts.lock().await;
+    let entry = attempts.entry(username.to_string()).or_insert((0, std::time::Instant::now()));
+    entry.0 += 1;
+    if entry.0 == 1 {
+        entry.1 = std::time::Instant::now(); // reset timer on first failure
+    }
+    warn!("Failed login attempt #{} for '{}'", entry.0, username);
+}
+
+/// Clear failed attempts after successful login.
+pub async fn clear_failed_login(state: &crate::state::AppState, username: &str) {
+    let mut attempts = state.login_attempts.lock().await;
+    attempts.remove(username);
+}
+
+// ── Session Management ──────────────────────────────────────────
+
+/// Register a new session (called on login).
+pub async fn register_session(state: &crate::state::AppState, session_id: &str, user_id: &str, expires_epoch: i64) {
+    let mut sessions = state.sessions.write().await;
+    sessions.insert(session_id.to_string(), (user_id.to_string(), expires_epoch));
+}
+
+/// Check if a session is still valid (not revoked).
+pub async fn is_session_valid(state: &crate::state::AppState, session_id: &str) -> bool {
+    let sessions = state.sessions.read().await;
+    if let Some((_user_id, expires)) = sessions.get(session_id) {
+        Utc::now().timestamp() < *expires
+    } else {
+        false
+    }
+}
+
+/// Revoke a session (called on logout).
+pub async fn revoke_session(state: &crate::state::AppState, session_id: &str) {
+    let mut sessions = state.sessions.write().await;
+    sessions.remove(session_id);
+}
+
+/// Revoke all sessions for a user.
+pub async fn revoke_all_sessions(state: &crate::state::AppState, user_id: &str) {
+    let mut sessions = state.sessions.write().await;
+    sessions.retain(|_, (uid, _)| uid != user_id);
 }
 
 // ── Axum Middleware ─────────────────────────────────────────────
@@ -309,9 +404,10 @@ fn extract_token(headers: &HeaderMap) -> Option<String> {
         .map(|t| t.to_string())
 }
 
-/// Auth middleware — validates JWT and injects Claims into request extensions.
+/// Auth middleware — validates JWT, checks session, injects Claims.
 /// Used on protected routes.
 pub async fn auth_middleware(
+    State(state): State<crate::state::AppState>,
     headers: HeaderMap,
     mut request: Request,
     next: Next,
@@ -330,8 +426,17 @@ pub async fn auth_middleware(
         }
     };
 
-    match validate_token(&token) {
+    match validate_token(&token, &state.jwt_secret) {
         Ok(claims) => {
+            // Check session is not revoked
+            if let Some(ref sid) = claims.session_id {
+                if !is_session_valid(&state, sid).await {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({ "success": false, "error": "Session expired or revoked" })),
+                    ).into_response();
+                }
+            }
             request.extensions_mut().insert(claims);
             next.run(request).await
         }
@@ -348,6 +453,7 @@ pub async fn auth_middleware(
 
 /// Require at least Operator role.
 pub async fn require_operator(
+    State(state): State<crate::state::AppState>,
     headers: HeaderMap,
     mut request: Request,
     next: Next,
@@ -363,8 +469,16 @@ pub async fn require_operator(
         }
     };
 
-    match validate_token(&token) {
+    match validate_token(&token, &state.jwt_secret) {
         Ok(claims) => {
+            if let Some(ref sid) = claims.session_id {
+                if !is_session_valid(&state, sid).await {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({ "success": false, "error": "Session expired or revoked" })),
+                    ).into_response();
+                }
+            }
             let role = Role::from_str(&claims.role);
             if !role.has_permission(&Role::Operator) {
                 return (
@@ -386,6 +500,7 @@ pub async fn require_operator(
 
 /// Require Admin role.
 pub async fn require_admin(
+    State(state): State<crate::state::AppState>,
     headers: HeaderMap,
     mut request: Request,
     next: Next,
@@ -401,8 +516,16 @@ pub async fn require_admin(
         }
     };
 
-    match validate_token(&token) {
+    match validate_token(&token, &state.jwt_secret) {
         Ok(claims) => {
+            if let Some(ref sid) = claims.session_id {
+                if !is_session_valid(&state, sid).await {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({ "success": false, "error": "Session expired or revoked" })),
+                    ).into_response();
+                }
+            }
             let role = Role::from_str(&claims.role);
             if !role.has_permission(&Role::Admin) {
                 return (
@@ -429,6 +552,15 @@ pub async fn login(
     State(state): State<crate::state::AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Response {
+    // ── Brute-force protection ──
+    if let Err(msg) = check_login_throttle(&state, &req.username).await {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({ "success": false, "error": msg })),
+        )
+            .into_response();
+    }
+
     // Find user — query as individual columns to avoid bool deserialization issues
     let row = sqlx::query_as::<_, (String, String, String, String, String, i32)>(
         "SELECT id, username, password_hash, role, created_at, is_active FROM users WHERE username = ?"
@@ -461,6 +593,7 @@ pub async fn login(
             User { id, username, password_hash, role, created_at, is_active: is_active != 0 }
         }
         None => {
+            record_failed_login(&state, &req.username).await;
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({ "success": false, "error": "Invalid credentials" })),
@@ -471,6 +604,7 @@ pub async fn login(
 
     // Verify password
     if !verify_password(&req.password, &user.password_hash) {
+        record_failed_login(&state, &req.username).await;
         return (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({ "success": false, "error": "Invalid credentials" })),
@@ -478,8 +612,11 @@ pub async fn login(
             .into_response();
     }
 
-    // Generate token
-    let (token, expires_at) = match create_token(&user.id, &user.username, &user.role) {
+    // ── Success — clear brute-force counter ──
+    clear_failed_login(&state, &req.username).await;
+
+    // Generate token (with session ID for server-side revocation)
+    let (token, expires_at, session_id) = match create_token(&user.id, &user.username, &user.role, &state.jwt_secret) {
         Ok(t) => t,
         Err(e) => {
             return (
@@ -489,6 +626,9 @@ pub async fn login(
                 .into_response();
         }
     };
+
+    // Register session for server-side revocation
+    register_session(&state, &session_id, &user.id, expires_at.timestamp()).await;
 
     // Log login to audit trail
     log_audit(
@@ -502,7 +642,7 @@ pub async fn login(
     )
     .await;
 
-    info!("User '{}' logged in (role: {})", user.username, user.role);
+    info!("User '{}' logged in (role: {}, session: {})", user.username, user.role, &session_id[..8]);
 
     (
         StatusCode::OK,
@@ -524,6 +664,7 @@ pub async fn login(
 
 /// POST /api/auth/verify — check if token is still valid
 pub async fn verify_token_handler(
+    State(state): State<crate::state::AppState>,
     headers: HeaderMap,
 ) -> Response {
     let token = match extract_token(&headers) {
@@ -537,24 +678,88 @@ pub async fn verify_token_handler(
         }
     };
 
-    match validate_token(&token) {
-        Ok(claims) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "success": true,
-                "data": {
-                    "user_id": claims.user_id,
-                    "username": claims.sub,
-                    "role": claims.role,
+    match validate_token(&token, &state.jwt_secret) {
+        Ok(claims) => {
+            // Also verify session is not revoked
+            if let Some(ref sid) = claims.session_id {
+                if !is_session_valid(&state, sid).await {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({ "success": false, "error": "Session revoked" })),
+                    )
+                        .into_response();
                 }
-            })),
-        )
-            .into_response(),
+            }
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "success": true,
+                    "data": {
+                        "user_id": claims.user_id,
+                        "username": claims.sub,
+                        "role": claims.role,
+                    }
+                })),
+            )
+                .into_response()
+        }
         Err(e) => (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({ "success": false, "error": e })),
         )
             .into_response(),
+    }
+}
+
+/// POST /api/auth/logout — revoke current session
+pub async fn logout(
+    State(state): State<crate::state::AppState>,
+    headers: HeaderMap,
+) -> Response {
+    let token = match extract_token(&headers) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "success": false, "error": "Missing token" })),
+            )
+                .into_response();
+        }
+    };
+
+    match validate_token(&token, &state.jwt_secret) {
+        Ok(claims) => {
+            if let Some(ref sid) = claims.session_id {
+                revoke_session(&state, sid).await;
+            }
+
+            log_audit(
+                &state.db,
+                &claims.user_id,
+                &claims.sub,
+                "logout",
+                None,
+                "{}",
+                None,
+            )
+            .await;
+
+            info!("User '{}' logged out", claims.sub);
+
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "success": true })),
+            )
+                .into_response()
+        }
+        Err(_) => {
+            // Token invalid — still return OK (idempotent logout)
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "success": true })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -703,6 +908,15 @@ pub async fn create_user(
             .into_response();
     }
 
+    // Validate password complexity (21 CFR Part 11)
+    if let Err(msg) = validate_password_complexity(&req.password) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "success": false, "error": msg })),
+        )
+            .into_response();
+    }
+
     // Hash password
     let hash = match hash_password(&req.password) {
         Ok(h) => h,
@@ -797,6 +1011,10 @@ pub async fn log_audit(
     .bind(ip_address)
     .execute(pool)
     .await
+    .map_err(|e| {
+        tracing::error!("CRITICAL: Failed to write audit trail entry: action={}, user={}, error={}", action, username, e);
+        e
+    })
     .ok();
 }
 

@@ -47,15 +47,17 @@ class WebSocketService {
 
   Future<void> _doConnect() async {
     try {
-      // Append token as query parameter for WebSocket auth
-      var wsUri = Uri.parse(url);
-      if (authToken != null) {
-        wsUri = wsUri.replace(queryParameters: {'token': authToken!});
-      }
+      // Connect without token in URL — auth via first message
+      final wsUri = Uri.parse(url);
       _channel = WebSocketChannel.connect(wsUri);
 
       // Wait for the actual WebSocket handshake to complete.
       await _channel!.ready;
+
+      // Send JWT as first message for authentication
+      if (authToken != null) {
+        _channel!.sink.add(authToken!);
+      }
 
       onConnectionChanged?.call(true);
 
@@ -63,6 +65,17 @@ class WebSocketService {
         (raw) {
           try {
             final json = jsonDecode(raw as String) as Map<String, dynamic>;
+
+            // Handle auth response from server
+            if (json.containsKey('auth') && json['auth'] == 'ok') {
+              return; // skip — it's the auth acknowledgement
+            }
+            if (json.containsKey('error')) {
+              // Auth failed — disconnect and retry
+              _handleDisconnect();
+              return;
+            }
+
             final data = PlcData.fromJson(json);
             _controller.add(data);
           } catch (_) {
