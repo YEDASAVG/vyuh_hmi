@@ -33,6 +33,8 @@ class BatchStateWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _stateColor();
+    // progress comes as 0-100 from the server; normalise to 0.0-1.0.
+    final p = (progress / 100).clamp(0.0, 1.0);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -75,7 +77,7 @@ class BatchStateWidget extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                '${(progress * 100).toStringAsFixed(0)}%',
+                '${(p * 100).toStringAsFixed(0)}%',
                 style: GoogleFonts.dmMono(
                   fontSize: 14,
                   color: HmiColors.textSecondary,
@@ -87,7 +89,7 @@ class BatchStateWidget extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
             child: LinearProgressIndicator(
-              value: progress,
+              value: p,
               minHeight: 6,
               backgroundColor: HmiColors.surfaceBorder,
               valueColor: AlwaysStoppedAnimation<Color>(color),

@@ -77,7 +77,7 @@ class _AlarmTileState extends State<_AlarmTile> with SingleTickerProviderStateMi
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _flashOpacity = Tween<double>(begin: 0.15, end: 0.35).animate(
+    _flashOpacity = Tween<double>(begin: 0.15, end: 0.55).animate(
       CurvedAnimation(parent: _flashController, curve: Curves.easeInOut),
     );
 
@@ -98,46 +98,76 @@ class _AlarmTileState extends State<_AlarmTile> with SingleTickerProviderStateMi
     final alarm = widget.alarm;
     final severity = alarm.severity;
 
+    final isCritical = severity == AlarmSeverity.critical;
+
     final content = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: isCritical ? 14 : 10),
       child: Row(
         children: [
-          Icon(severity.icon, color: severity.color, size: 18),
-          const SizedBox(width: 8),
+          Icon(severity.icon, color: severity.color, size: isCritical ? 28 : 20),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              alarm.message,
-              style: TextStyle(
-                color: severity.color,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isCritical ? '⚠ CRITICAL ALARM' : severity == AlarmSeverity.warning ? '⚠ WARNING' : 'INFO',
+                  style: TextStyle(
+                    color: severity.color,
+                    fontSize: isCritical ? 14 : 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  alarm.message,
+                  style: TextStyle(
+                    color: severity.color.withValues(alpha: 0.9),
+                    fontSize: isCritical ? 13 : 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
           if (widget.onDismiss != null)
             GestureDetector(
               onTap: () => widget.onDismiss!(alarm.id),
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Icon(Icons.close, color: severity.color, size: 14),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: severity.color.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(Icons.close, color: severity.color, size: 16),
               ),
             ),
         ],
       ),
     );
 
-    // Critical alarms flash; others have a static background.
-    if (severity == AlarmSeverity.critical) {
+    // Critical alarms flash with hard pulse; others have a static background.
+    if (isCritical) {
       return AnimatedBuilder(
         animation: _flashOpacity,
         builder: (context, child) {
           return Container(
-            margin: const EdgeInsets.only(bottom: 2),
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: severity.color.withValues(alpha: _flashOpacity.value),
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: severity.color.withValues(alpha: 0.6), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: severity.color.withValues(alpha: _flashOpacity.value * 0.5),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+              ],
             ),
             child: child,
           );
@@ -147,10 +177,11 @@ class _AlarmTileState extends State<_AlarmTile> with SingleTickerProviderStateMi
     }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 2),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: severity.bgColor,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: severity.color.withValues(alpha: 0.3)),
       ),
       child: content,
     );

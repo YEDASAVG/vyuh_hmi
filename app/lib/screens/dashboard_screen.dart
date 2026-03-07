@@ -9,6 +9,7 @@ import '../models/plc_data.dart';
 import '../services/auth_service.dart';
 import '../stores/dashboard_store.dart';
 import '../widgets/batch_state_widget.dart';
+import '../widgets/alarm_banner_widget.dart';
 import '../widgets/connection_status_bar.dart';
 import '../widgets/control_toggle_widget.dart';
 import '../widgets/esig_dialog.dart';
@@ -55,6 +56,11 @@ class DashboardScreen extends StatelessWidget {
                   colors: colors,
                   onAddDevice: onNavigateToDevices,
                 ),
+                if (store.activeAlarms.isNotEmpty)
+                  AlarmBanner(
+                    alarms: store.activeAlarms.toList(),
+                    onDismiss: store.dismissAlarm,
+                  ),
                 Expanded(
                   child: Stack(
                     children: [
@@ -228,16 +234,8 @@ class DashboardScreen extends StatelessWidget {
                     currentRpm: store.agitatorSpeed,
                     isOverridden: store.agitatorOverrideActive,
                     isLoading: store.isWriting,
-                    onSetRpm: (rpm) => _withEsig(
-                      context,
-                      'Set Agitator RPM to $rpm',
-                      () => store.setAgitatorRpm(rpm),
-                    ),
-                    onClearOverride: () => _withEsig(
-                      context,
-                      'Clear Agitator Override',
-                      () => store.clearAgitatorOverride(),
-                    ),
+                    onSetRpm: (rpm) => store.setAgitatorRpm(rpm),
+                    onClearOverride: () => store.clearAgitatorOverride(),
                   ),
                 ),
               // ── Setpoint Controls (config-driven) ──
@@ -249,16 +247,8 @@ class DashboardScreen extends StatelessWidget {
                     currentValue: store.liveValues[sp.register] ?? 0,
                     isLoading: store.isWriting,
                     colors: colors,
-                    onSet: (value) => _withEsig(
-                      context,
-                      'Set ${sp.label} to ${sp.divisor > 1 ? (value / sp.divisor).toStringAsFixed(1) : value.toString()} ${sp.unit}',
-                      () => store.writeRegister(register: sp.register, value: value),
-                    ),
-                    onClear: () => _withEsig(
-                      context,
-                      'Clear ${sp.label} override',
-                      () => store.writeRegister(register: sp.register, value: 0),
-                    ),
+                    onSet: (value) => store.writeRegister(register: sp.register, value: value),
+                    onClear: () => store.writeRegister(register: sp.register, value: 0),
                   ),
                 ),
               if (config.dashboard.controls?.emergencyStop != null)
@@ -279,11 +269,7 @@ class DashboardScreen extends StatelessWidget {
                       _RestartBatchButton(
                         isLoading: store.isWriting,
                         isIdle: store.batchState == BatchState.idle,
-                        onPressed: () => _withEsig(
-                          context,
-                          'Restart Batch',
-                          () => store.restartBatch(),
-                        ),
+                        onPressed: () => store.restartBatch(),
                       ),
                       if (store.lastWriteError != null) ...[
                         const SizedBox(height: 8),

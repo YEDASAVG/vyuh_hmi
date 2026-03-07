@@ -32,8 +32,7 @@
   ],
   "alarms": [
     {"register": 1028, "label": "Temperature", "warnHigh": 85, "critHigh": 100},
-    {"register": 1029, "label": "Pressure",    "warnHigh": 1200, "critHigh": 1400},
-    {"register": 1035, "label": "pH Level",    "warnLow": 55, "critLow": 50, "warnHigh": 85, "critHigh": 90}
+    {"register": 1029, "label": "Pressure",    "warnHigh": 1200, "critHigh": 1400}
   ],
   "dashboard": {
     "gauge": {

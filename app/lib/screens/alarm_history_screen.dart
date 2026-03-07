@@ -226,9 +226,23 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
     );
   }
 
+  static int _priorityFromString(String s) {
+    switch (s.toLowerCase()) {
+      case 'critical': return 1;
+      case 'high': return 2;
+      case 'medium': return 3;
+      case 'low': return 4;
+      case 'info': return 5;
+      default: return int.tryParse(s) ?? 5;
+    }
+  }
+
   Widget _buildAlarmTile(Map<String, dynamic> alarm, ThemeConfig colors) {
-    final id = alarm['id'] as int;
-    final priority = alarm['priority'] as int? ?? 5;
+    final id = (alarm['id'] is int) ? alarm['id'] as int : int.tryParse(alarm['id'].toString()) ?? 0;
+    final rawPriority = alarm['priority'];
+    final priority = rawPriority is int
+        ? rawPriority
+        : _priorityFromString(rawPriority?.toString() ?? '');
     final state = alarm['state'] as String? ?? 'active';
     final label = alarm['label'] as String? ?? '';
     final message = alarm['message'] as String? ?? '';

@@ -357,6 +357,10 @@ abstract class _DashboardStore with Store {
 
   // ── Phase 4: Alarm Logic ──────────────────────────────────────────
 
+  /// Format a threshold value — show decimal only when it's fractional.
+  static String _fmtThreshold(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
   @action
   void _checkAlarms() {
     final newAlarms = <Alarm>[];
@@ -375,7 +379,7 @@ abstract class _DashboardStore with Store {
         newAlarms.add(Alarm(
           id: '${threshold.label}-crit-high',
           message:
-              'CRITICAL: ${threshold.label} ${val.toStringAsFixed(1)} exceeds ${threshold.critHigh!.toStringAsFixed(0)}',
+              'CRITICAL: ${threshold.label} ${val.toStringAsFixed(1)} exceeds ${_fmtThreshold(threshold.critHigh!)}',
           severity: AlarmSeverity.critical,
           register: threshold.register,
         ));
@@ -394,7 +398,7 @@ abstract class _DashboardStore with Store {
         newAlarms.add(Alarm(
           id: '${threshold.label}-crit-low',
           message:
-              'CRITICAL: ${threshold.label} ${val.toStringAsFixed(1)} below ${threshold.critLow!.toStringAsFixed(0)}',
+              'CRITICAL: ${threshold.label} ${val.toStringAsFixed(1)} below ${_fmtThreshold(threshold.critLow!)}',
           severity: AlarmSeverity.critical,
           register: threshold.register,
         ));

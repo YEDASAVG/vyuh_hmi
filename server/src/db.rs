@@ -266,6 +266,32 @@ pub async fn has_active_alarm(pool: &SqlitePool, device_id: &str, register: u16)
     row.0 > 0
 }
 
+/// Get the ID of an active alarm for device+register (for auto-clearing).
+pub async fn get_active_alarm_id(pool: &SqlitePool, device_id: &str, register: u16) -> Option<i64> {
+    sqlx::query_as::<_, (i64,)>(
+        "SELECT id FROM alarms WHERE device_id = ? AND register = ? AND state IN ('active', 'acknowledged') ORDER BY id DESC LIMIT 1",
+    )
+    .bind(device_id)
+    .bind(register as i64)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .map(|r| r.0)
+}
+
+/// Get the most recent running batch for a device.
+pub async fn get_running_batch(pool: &SqlitePool, device_id: &str) -> Option<(i64, String)> {
+    sqlx::query_as::<_, (i64, String)>(
+        "SELECT id, batch_id FROM batch_records WHERE device_id = ? AND status = 'running' ORDER BY id DESC LIMIT 1",
+    )
+    .bind(device_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+}
+
 /// Acknowledge an alarm — operator confirmation.
 pub async fn ack_alarm(
     pool: &SqlitePool,

@@ -32,8 +32,7 @@
   ],
   "alarms": [
     {"register": 1028, "label": "Reactor Temp", "warnHigh": 90, "critHigh": 110},
-    {"register": 1029, "label": "Vessel PSI",   "warnHigh": 1100, "critHigh": 1300},
-    {"register": 1035, "label": "pH Sensor",    "warnLow": 60, "critLow": 45, "warnHigh": 80, "critHigh": 95}
+    {"register": 1029, "label": "Vessel PSI",   "warnHigh": 1100, "critHigh": 1300}
   ],
   "dashboard": {
     "gauge": {
