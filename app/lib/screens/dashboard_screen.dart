@@ -87,73 +87,64 @@ class DashboardScreen extends StatelessWidget {
 
   Widget _wideLayout(BoxConstraints constraints, ThemeConfig colors) {
     final registry = WidgetRegistry(config: config, store: store);
-    const designWidth = 900.0;
-    const maxScale = 1.3;
-    final availableWidth = constraints.maxWidth - 40;
-    final scale = (availableWidth / designWidth).clamp(0.8, maxScale);
-    final containerWidth = designWidth * scale;
+    final w = constraints.maxWidth;
+    final gaugeSize = w >= 1200 ? 220.0 : 200.0;
+    final chartHeight = w >= 1200 ? 260.0 : 220.0;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Center(
-        child: SizedBox(
-          width: containerWidth,
-          child: FittedBox(
-            fit: BoxFit.fitWidth,
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              width: designWidth,
-              child: Column(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1400),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Top row: Gauge + Batch | Stat Cards ──
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Top row: Gauge + Batch | Stat Cards ──
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 240,
-                        child: Column(
-                          children: [
-                            registry.buildGauge(size: 200) ??
-                                const SizedBox.shrink(),
-                            const SizedBox(height: 16),
-                            if (config.dashboard.batchState != null)
-                              BatchStateWidget(
-                                state: store.batchState,
-                                progress: store.batchProgress,
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: registry.buildStatCards(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  // ── Control Panel (operator / admin only) ──
-                  if (_canControl && config.dashboard.controls != null)
-                    _buildControlPanel(colors),
-                  if (_canControl && config.dashboard.controls != null)
-                    const SizedBox(height: 20),
-                  // ── Charts row ──
                   SizedBox(
-                    height: 220,
-                    child: Row(
-                      children: _interleave(
-                        registry.buildCharts(),
-                        const SizedBox(width: 12),
-                      ),
+                    width: gaugeSize + 40,
+                    child: Column(
+                      children: [
+                        registry.buildGauge(size: gaugeSize) ??
+                            const SizedBox.shrink(),
+                        const SizedBox(height: 16),
+                        if (config.dashboard.batchState != null)
+                          BatchStateWidget(
+                            state: store.batchState,
+                            progress: store.batchProgress,
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: registry.buildStatCards(),
                     ),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 20),
+              // ── Control Panel (operator / admin only) ──
+              if (_canControl && config.dashboard.controls != null)
+                _buildControlPanel(colors),
+              if (_canControl && config.dashboard.controls != null)
+                const SizedBox(height: 20),
+              // ── Charts row ──
+              SizedBox(
+                height: chartHeight,
+                child: Row(
+                  children: _interleave(
+                    registry.buildCharts(),
+                    const SizedBox(width: 12),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -164,29 +155,41 @@ class DashboardScreen extends StatelessWidget {
     final registry = WidgetRegistry(config: config, store: store);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       children: [
-        Center(
-          child: registry.buildGauge(size: 180) ?? const SizedBox.shrink(),
+        // ── Hero row: Gauge + Batch State side-by-side ──
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Gauge — compact for mobile
+            registry.buildGauge(size: 130) ?? const SizedBox.shrink(),
+            const SizedBox(width: 12),
+            // Batch state fills remaining space
+            if (config.dashboard.batchState != null)
+              Expanded(
+                child: BatchStateWidget(
+                  state: store.batchState,
+                  progress: store.batchProgress,
+                ),
+              ),
+          ],
         ),
-        const SizedBox(height: 16),
-        if (config.dashboard.batchState != null)
-          BatchStateWidget(
-            state: store.batchState,
-            progress: store.batchProgress,
-          ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: registry.buildStatCards(),
-        ),
-        const SizedBox(height: 16),
-        if (_canControl && config.dashboard.controls != null) _buildControlPanel(colors),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+
+        // ── Stat cards — 2-column grid ──
+        _MobileStatGrid(cards: registry.buildStatCards()),
+        const SizedBox(height: 12),
+
+        // ── Operator controls ──
+        if (_canControl && config.dashboard.controls != null)
+          _buildControlPanel(colors),
+        if (_canControl && config.dashboard.controls != null)
+          const SizedBox(height: 12),
+
+        // ── Charts — stacked, compact height ──
         ...registry
-            .buildChartsNarrow()
-            .expand((w) => [w, const SizedBox(height: 12)]),
+            .buildChartsNarrow(height: 160)
+            .expand((w) => [w, const SizedBox(height: 10)]),
       ],
     );
   }
@@ -194,8 +197,12 @@ class DashboardScreen extends StatelessWidget {
   // ── Control Panel (config-driven) ────────────────────────────────
 
   Widget _buildControlPanel(ThemeConfig colors) {
-    return Builder(
-      builder: (context) => Container(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+      final isNarrow = constraints.maxWidth < 500;
+      final controlWidth = isNarrow ? constraints.maxWidth : 300.0;
+      final stopWidth = isNarrow ? constraints.maxWidth : 220.0;
+      return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colors.surface,
@@ -229,7 +236,7 @@ class DashboardScreen extends StatelessWidget {
             children: [
               if (config.dashboard.controls?.agitator != null)
                 SizedBox(
-                  width: 300,
+                  width: controlWidth,
                   child: AgitatorSliderWidget(
                     currentRpm: store.agitatorSpeed,
                     isOverridden: store.agitatorOverrideActive,
@@ -241,7 +248,7 @@ class DashboardScreen extends StatelessWidget {
               // ── Setpoint Controls (config-driven) ──
               for (final sp in config.dashboard.controls?.setpoints ?? [])
                 SizedBox(
-                  width: 300,
+                  width: controlWidth,
                   child: _SetpointSlider(
                     config: sp,
                     currentValue: store.liveValues[sp.register] ?? 0,
@@ -253,7 +260,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
               if (config.dashboard.controls?.emergencyStop != null)
                 SizedBox(
-                  width: 220,
+                  width: stopWidth,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -291,7 +298,8 @@ class DashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-    ),
+    );
+      },
     );
   }
 
@@ -671,87 +679,95 @@ class _DeviceSwitcherBar extends StatelessWidget {
           );
         }
 
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            border: Border(
-              bottom: BorderSide(color: colors.surfaceBorder, width: 1),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.memory_rounded, size: 16, color: colors.accent),
-              const SizedBox(width: 8),
-              Text(
-                'DEVICE',
-                style: GoogleFonts.outfit(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
-                  color: colors.textMuted,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 500;
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: colors.surface,
+                border: Border(
+                  bottom: BorderSide(color: colors.surfaceBorder, width: 1),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: devices.map((dev) {
-                      final isActive = dev.id == activeId;
-                      final protocolColor = dev.protocol == 'opcua'
-                          ? const Color(0xFF26A69A)
-                          : const Color(0xFF42A5F5);
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: _DeviceChip(
-                          label: dev.name,
-                          sublabel: dev.protocol.toUpperCase(),
-                          isActive: isActive,
-                          isConnected: dev.isConnected,
-                          accentColor: isActive ? colors.accent : protocolColor,
-                          onTap: () => store.switchDevice(dev.id),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-              if (onAddDevice != null)
-                IconButton(
-                  icon: Icon(Icons.add_circle_outline_rounded,
-                      size: 20, color: colors.accent),
-                  tooltip: 'Add / Discover PLCs',
-                  onPressed: onAddDevice,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  padding: EdgeInsets.zero,
-                ),
-              if (active != null) ...[
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: (active.protocol == 'opcua'
-                            ? const Color(0xFF26A69A)
-                            : const Color(0xFF42A5F5))
-                        .withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    active.protocol.toUpperCase(),
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: active.protocol == 'opcua'
-                          ? const Color(0xFF26A69A)
-                          : const Color(0xFF42A5F5),
+              child: Row(
+                children: [
+                  Icon(Icons.memory_rounded, size: 16, color: colors.accent),
+                  if (!isNarrow) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      'DEVICE',
+                      style: GoogleFonts.outfit(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                        color: colors.textMuted,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: devices.map((dev) {
+                          final isActive = dev.id == activeId;
+                          final protocolColor = dev.protocol == 'opcua'
+                              ? const Color(0xFF26A69A)
+                              : const Color(0xFF42A5F5);
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: _DeviceChip(
+                              label: dev.name,
+                              sublabel: dev.protocol.toUpperCase(),
+                              isActive: isActive,
+                              isConnected: dev.isConnected,
+                              accentColor: isActive ? colors.accent : protocolColor,
+                              onTap: () => store.switchDevice(dev.id),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ],
-          ),
+                  if (onAddDevice != null)
+                    IconButton(
+                      icon: Icon(Icons.add_circle_outline_rounded,
+                          size: 20, color: colors.accent),
+                      tooltip: 'Add / Discover PLCs',
+                      onPressed: onAddDevice,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      padding: EdgeInsets.zero,
+                    ),
+                  // Hide the standalone protocol tag on narrow screens
+                  if (!isNarrow && active != null) ...[
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: (active.protocol == 'opcua'
+                                ? const Color(0xFF26A69A)
+                                : const Color(0xFF42A5F5))
+                            .withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        active.protocol.toUpperCase(),
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: active.protocol == 'opcua'
+                              ? const Color(0xFF26A69A)
+                              : const Color(0xFF42A5F5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -843,6 +859,31 @@ class _DeviceChip extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ── Mobile 2-column stat card grid ────────────────────────────────────────────
+
+class _MobileStatGrid extends StatelessWidget {
+  final List<Widget> cards;
+  const _MobileStatGrid({required this.cards});
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <Widget>[];
+    for (var i = 0; i < cards.length; i += 2) {
+      final hasSecond = i + 1 < cards.length;
+      rows.add(Row(
+        children: [
+          Expanded(child: cards[i]),
+          const SizedBox(width: 10),
+          if (hasSecond) Expanded(child: cards[i + 1])
+          else const Expanded(child: SizedBox()),
+        ],
+      ));
+      if (i + 2 < cards.length) rows.add(const SizedBox(height: 10));
+    }
+    return Column(children: rows);
   }
 }
 

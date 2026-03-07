@@ -26,43 +26,49 @@ class ConnectionStatusBar extends StatelessWidget {
     final warnCount =
         alarms.where((a) => a.severity == AlarmSeverity.warning).length;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: allGood ? HmiColors.healthyDim : HmiColors.dangerDim,
-      child: Row(
-        children: [
-          Icon(
-            allGood ? Icons.check_circle_rounded : Icons.warning_rounded,
-            size: 14,
-            color: allGood ? HmiColors.healthy : HmiColors.danger,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 500;
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(horizontal: isNarrow ? 10 : 16, vertical: 6),
+          color: allGood ? HmiColors.healthyDim : HmiColors.dangerDim,
+          child: Row(
+            children: [
+              Icon(
+                allGood ? Icons.check_circle_rounded : Icons.warning_rounded,
+                size: 14,
+                color: allGood ? HmiColors.healthy : HmiColors.danger,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                allGood ? 'Connected' : 'Disconnected',
+                style: GoogleFonts.outfit(
+                  fontSize: isNarrow ? 11 : 12,
+                  fontWeight: FontWeight.w500,
+                  color: allGood ? HmiColors.healthy : HmiColors.danger,
+                ),
+              ),
+              if (critCount > 0 || warnCount > 0) ...[
+                const SizedBox(width: 8),
+                Container(width: 1, height: 12, color: Colors.white12),
+                const SizedBox(width: 8),
+              ],
+              if (critCount > 0)
+                _alarmBadge(critCount, 'CRIT', HmiColors.danger),
+              if (critCount > 0 && warnCount > 0)
+                const SizedBox(width: 6),
+              if (warnCount > 0)
+                _alarmBadge(warnCount, 'WARN', HmiColors.warning),
+              const Spacer(),
+              // On narrow screens: just dots, no labels
+              _dot(isNarrow ? '' : 'Server', isServerConnected),
+              SizedBox(width: isNarrow ? 8 : 12),
+              _dot(isNarrow ? '' : 'WebSocket', isWsConnected),
+            ],
           ),
-          const SizedBox(width: 8),
-          Text(
-            allGood ? 'Connected' : 'Disconnected',
-            style: GoogleFonts.outfit(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: allGood ? HmiColors.healthy : HmiColors.danger,
-            ),
-          ),
-          if (critCount > 0 || warnCount > 0) ...[
-            const SizedBox(width: 12),
-            Container(width: 1, height: 12, color: Colors.white12),
-            const SizedBox(width: 10),
-          ],
-          if (critCount > 0)
-            _alarmBadge(critCount, 'CRIT', HmiColors.danger),
-          if (critCount > 0 && warnCount > 0)
-            const SizedBox(width: 8),
-          if (warnCount > 0)
-            _alarmBadge(warnCount, 'WARN', HmiColors.warning),
-          const Spacer(),
-          _dot('Server', isServerConnected),
-          const SizedBox(width: 12),
-          _dot('WebSocket', isWsConnected),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -111,14 +117,16 @@ class ConnectionStatusBar extends StatelessWidget {
             color: connected ? HmiColors.healthy : HmiColors.danger,
           ),
         ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: GoogleFonts.outfit(
-            fontSize: 11,
-            color: HmiColors.textMuted,
+        if (label.isNotEmpty) ...[
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.outfit(
+              fontSize: 11,
+              color: HmiColors.textMuted,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

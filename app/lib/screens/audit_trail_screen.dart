@@ -90,43 +90,37 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
           ),
         ),
 
-        // ── Filter chips ──
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            children: _actionFilters.map((filter) {
-              final isSelected = _filterAction == filter;
-              final label = filter ?? 'All';
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: FilterChip(
-                  selected: isSelected,
-                  label: Text(
-                    _formatActionLabel(label),
-                    style: GoogleFonts.outfit(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: isSelected ? colors.background : colors.textSecondary,
-                    ),
-                  ),
-                  selectedColor: colors.accent,
-                  backgroundColor: colors.surface,
-                  side: BorderSide(
-                    color: isSelected ? colors.accent : colors.surfaceBorder,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  showCheckmark: false,
-                  onSelected: (_) {
-                    setState(() => _filterAction = filter);
-                    _loadAudit();
-                  },
-                ),
-              );
-            }).toList(),
+        // ── Action filter dropdown ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colors.surfaceBorder),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: _filterAction,
+                isExpanded: true,
+                dropdownColor: colors.surface,
+                icon: Icon(Icons.keyboard_arrow_down_rounded, color: colors.textSecondary, size: 20),
+                style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary),
+                items: _actionFilters.map((filter) {
+                  final label = filter == null ? 'All Actions' : _formatActionLabel(filter);
+                  return DropdownMenuItem(
+                    value: filter,
+                    child: Text(label, style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary)),
+                  );
+                }).toList(),
+                onChanged: (v) {
+                  setState(() => _filterAction = v);
+                  _loadAudit();
+                },
+              ),
+            ),
           ),
         ),
 
@@ -143,14 +137,38 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                         style: GoogleFonts.outfit(color: colors.textMuted),
                       ),
                     )
-                  : RefreshIndicator(
-                      onRefresh: _loadAudit,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _entries.length,
-                        itemBuilder: (context, index) =>
-                            _buildEntry(_entries[index], colors),
-                      ),
+                  : LayoutBuilder(
+                      builder: (ctx, constraints) {
+                        final cols = constraints.maxWidth >= 1200 ? 3
+                            : constraints.maxWidth >= 800 ? 2
+                            : 1;
+                        if (cols == 1) {
+                          return RefreshIndicator(
+                            onRefresh: _loadAudit,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: _entries.length,
+                              itemBuilder: (context, index) =>
+                                  _buildEntry(_entries[index], colors),
+                            ),
+                          );
+                        }
+                        return RefreshIndicator(
+                          onRefresh: _loadAudit,
+                          child: GridView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: cols,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 0,
+                              mainAxisExtent: 100,
+                            ),
+                            itemCount: _entries.length,
+                            itemBuilder: (context, index) =>
+                                _buildEntry(_entries[index], colors),
+                          ),
+                        );
+                      },
                     ),
         ),
       ],

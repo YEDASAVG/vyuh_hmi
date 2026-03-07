@@ -87,24 +87,69 @@ class PlcDetailScreen extends StatelessWidget {
                 ),
               ),
 
-              // ── Main Content ──
+              // ── Main Content (responsive) ──
               Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    _sectionHeader('Live Gauges'),
-                    const SizedBox(height: 12),
-                    _buildGauges(),
-                    const SizedBox(height: 24),
-                    _sectionHeader('Write Controls'),
-                    const SizedBox(height: 8),
-                    _buildWriteControls(),
-                    const SizedBox(height: 24),
-                    _sectionHeader('Register Trends'),
-                    const SizedBox(height: 8),
-                    ..._buildCharts(),
-                    const SizedBox(height: 32),
-                  ],
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isDesktop = constraints.maxWidth >= 900;
+                    if (isDesktop) {
+                      // Side-by-side: Gauges+Controls | Charts
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Left column
+                          Expanded(
+                            flex: 5,
+                            child: ListView(
+                              padding: const EdgeInsets.all(16),
+                              children: [
+                                _sectionHeader('Live Gauges'),
+                                const SizedBox(height: 12),
+                                _buildGauges(),
+                                const SizedBox(height: 24),
+                                _sectionHeader('Write Controls'),
+                                const SizedBox(height: 8),
+                                _buildWriteControls(),
+                                const SizedBox(height: 32),
+                              ],
+                            ),
+                          ),
+                          const VerticalDivider(width: 1, color: Color(0xFF2A2A32)),
+                          // Right column — charts
+                          Expanded(
+                            flex: 4,
+                            child: ListView(
+                              padding: const EdgeInsets.all(16),
+                              children: [
+                                _sectionHeader('Register Trends'),
+                                const SizedBox(height: 8),
+                                ..._buildCharts(),
+                                const SizedBox(height: 32),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                    // Mobile / tablet — single column
+                    return ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        _sectionHeader('Live Gauges'),
+                        const SizedBox(height: 12),
+                        _buildGauges(),
+                        const SizedBox(height: 24),
+                        _sectionHeader('Write Controls'),
+                        const SizedBox(height: 8),
+                        _buildWriteControls(),
+                        const SizedBox(height: 24),
+                        _sectionHeader('Register Trends'),
+                        const SizedBox(height: 8),
+                        ..._buildCharts(),
+                        const SizedBox(height: 32),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -265,33 +310,46 @@ class PlcDetailScreen extends StatelessWidget {
       ('pH', () => store.pH, 0.0, 14.0, 9.0, 11.0),
     ];
 
-    final rows = <Widget>[];
-    for (var i = 0; i < gaugeConfigs.length; i += 3) {
-      final rowItems = gaugeConfigs.skip(i).take(3).toList();
-      rows.add(
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: rowItems.map((g) {
-            final (key, getValue, min, max, warn, danger) = g;
-            final reg = store.config.registerByKey(key);
-            return GaugeWidget(
-              label: reg?.label ?? key,
-              value: getValue(),
-              unit: reg?.unit ?? '',
-              min: min,
-              max: max,
-              warningThreshold: warn,
-              dangerThreshold: danger,
-              size: 130,
-            );
-          }).toList(),
-        ),
-      );
-      if (i + 3 < gaugeConfigs.length) {
-        rows.add(const SizedBox(height: 16));
-      }
-    }
-    return Column(children: rows);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final perRow = constraints.maxWidth >= 900 ? 6
+            : constraints.maxWidth >= 600 ? 4
+            : constraints.maxWidth < 400 ? 2
+            : 3;
+        final gaugeSize = constraints.maxWidth >= 900 ? 140.0
+            : constraints.maxWidth >= 600 ? 130.0
+            : constraints.maxWidth < 400 ? 110.0
+            : 130.0;
+
+        final rows = <Widget>[];
+        for (var i = 0; i < gaugeConfigs.length; i += perRow) {
+          final rowItems = gaugeConfigs.skip(i).take(perRow).toList();
+          rows.add(
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: rowItems.map((g) {
+                final (key, getValue, min, max, warn, danger) = g;
+                final reg = store.config.registerByKey(key);
+                return GaugeWidget(
+                  label: reg?.label ?? key,
+                  value: getValue(),
+                  unit: reg?.unit ?? '',
+                  min: min,
+                  max: max,
+                  warningThreshold: warn,
+                  dangerThreshold: danger,
+                  size: gaugeSize,
+                );
+              }).toList(),
+            ),
+          );
+          if (i + perRow < gaugeConfigs.length) {
+            rows.add(const SizedBox(height: 16));
+          }
+        }
+        return Column(children: rows);
+      },
+    );
   }
 
   List<Widget> _buildCharts() {

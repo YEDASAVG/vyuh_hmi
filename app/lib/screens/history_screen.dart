@@ -331,61 +331,70 @@ class _HistoryScreenState extends State<HistoryScreen> {
       );
     }
 
-    return Column(
-      children: [
-        // Summary bar
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: HmiColors.surface.withValues(alpha: 0.5),
-          child: Row(
-            children: [
-              _summaryChip(
-                  Icons.data_array_rounded,
-                  '${_snapshots.length} snapshots',
-                  HmiColors.accent),
-              const SizedBox(width: 12),
-              _summaryChip(
-                  Icons.timer_outlined,
-                  '1/sec',
-                  HmiColors.info),
-              const Spacer(),
-              Text(
-                'Auto-refresh 5s',
-                style: GoogleFonts.outfit(
-                    fontSize: 10, color: HmiColors.textMuted),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 500;
+        return Column(
+          children: [
+            // Summary bar
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: HmiColors.surface.withValues(alpha: 0.5),
+              child: Row(
+                children: [
+                  _summaryChip(
+                      Icons.data_array_rounded,
+                      '${_snapshots.length} snapshots',
+                      HmiColors.accent),
+                  const SizedBox(width: 12),
+                  _summaryChip(
+                      Icons.timer_outlined,
+                      '1/sec',
+                      HmiColors.info),
+                  const Spacer(),
+                  Text(
+                    'Auto-refresh 5s',
+                    style: GoogleFonts.outfit(
+                        fontSize: 10, color: HmiColors.textMuted),
+                  ),
+                ],
               ),
+            ),
+            const Divider(height: 1, color: HmiColors.surfaceBorder),
+            if (!isNarrow) ...[
+              // Table header (wide only)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: HmiColors.surface,
+                child: Row(
+                  children: [
+                    _headerCell('TIME', flex: 2),
+                    _headerCell('TEMP'),
+                    _headerCell('PSI'),
+                    _headerCell('RH%'),
+                    _headerCell('FLOW'),
+                    _headerCell('RPM'),
+                    _headerCell('pH'),
+                    _headerCell('STATE', flex: 2),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: HmiColors.surfaceBorder),
             ],
-          ),
-        ),
-        const Divider(height: 1, color: HmiColors.surfaceBorder),
-        // Table header
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: HmiColors.surface,
-          child: Row(
-            children: [
-              _headerCell('TIME', flex: 2),
-              _headerCell('TEMP'),
-              _headerCell('PSI'),
-              _headerCell('RH%'),
-              _headerCell('FLOW'),
-              _headerCell('RPM'),
-              _headerCell('pH'),
-              _headerCell('STATE', flex: 2),
-            ],
-          ),
-        ),
-        const Divider(height: 1, color: HmiColors.surfaceBorder),
-        // Data rows
-        Expanded(
-          child: ListView.builder(
-            padding: EdgeInsets.zero,
-            itemCount: _snapshots.length,
-            itemBuilder: (ctx, i) => _buildRow(_snapshots[i], i),
-          ),
-        ),
-      ],
+            // Data rows
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: _snapshots.length,
+                itemBuilder: (ctx, i) => isNarrow
+                    ? _buildCardRow(_snapshots[i], i)
+                    : _buildRow(_snapshots[i], i),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -480,6 +489,76 @@ class _HistoryScreenState extends State<HistoryScreen> {
           fontWeight: FontWeight.w500,
           color: color,
         ),
+      ),
+    );
+  }
+
+  /// Mobile-friendly card layout for a single history snapshot.
+  Widget _buildCardRow(_Snapshot snap, int index) {
+    final timeStr = DateFormat('HH:mm:ss').format(snap.time.toLocal());
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: HmiColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: HmiColors.surfaceBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top row: time + batch state
+          Row(
+            children: [
+              Icon(Icons.access_time_rounded, size: 14, color: HmiColors.textMuted),
+              const SizedBox(width: 4),
+              Text(
+                timeStr,
+                style: GoogleFonts.dmMono(fontSize: 12, fontWeight: FontWeight.w600, color: HmiColors.textSecondary),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: snap.batchColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${snap.batchLabel} ${snap.progress.toInt()}%',
+                  style: GoogleFonts.dmMono(fontSize: 10, fontWeight: FontWeight.w600, color: snap.batchColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Grid of values
+          Wrap(
+            spacing: 16,
+            runSpacing: 6,
+            children: [
+              _miniStat('TEMP', '${snap.temp.toInt()}°C', HmiColors.accent),
+              _miniStat('PSI', '${snap.pressure.toInt()}', HmiColors.info),
+              _miniStat('RH', '${snap.humidity.toInt()}%', HmiColors.info),
+              _miniStat('FLOW', '${snap.flow.toInt()}', HmiColors.healthy),
+              _miniStat('RPM', '${snap.agitator.toInt()}', HmiColors.warning),
+              _miniStat('pH', snap.pH.toStringAsFixed(1), const Color(0xFFAB47BC)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String label, String value, Color color) {
+    return SizedBox(
+      width: 65,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: GoogleFonts.dmMono(fontSize: 9, fontWeight: FontWeight.w700, color: HmiColors.textMuted, letterSpacing: 0.5)),
+          Text(value, style: GoogleFonts.dmMono(fontSize: 13, fontWeight: FontWeight.w500, color: color)),
+        ],
       ),
     );
   }

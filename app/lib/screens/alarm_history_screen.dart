@@ -129,49 +129,91 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
           ),
         ),
 
-        // ── State filter chips ──
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            children: _stateFilters.map((f) {
-              final selected = _stateFilter == f;
-              final label = f == null ? 'All' : f[0].toUpperCase() + f.substring(1);
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: FilterChip(
-                  label: Text(label),
-                  selected: selected,
-                  onSelected: (_) {
-                    setState(() => _stateFilter = f);
-                    _load();
-                  },
-                  selectedColor: colors.accent.withValues(alpha: 0.25),
-                  labelStyle: GoogleFonts.outfit(
-                    fontSize: 12,
-                    color: selected ? colors.accent : colors.textSecondary,
+        // ── Dropdown filters (mobile-friendly) ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              // State filter dropdown
+              Expanded(
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: colors.surfaceBorder),
                   ),
-                  backgroundColor: colors.surface,
-                  side: BorderSide(
-                    color: selected ? colors.accent : colors.surfaceBorder,
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String?>(
+                      value: _stateFilter,
+                      isExpanded: true,
+                      dropdownColor: colors.surface,
+                      icon: Icon(Icons.keyboard_arrow_down_rounded, color: colors.textSecondary, size: 20),
+                      style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary),
+                      items: _stateFilters.map((f) {
+                        final label = f == null ? 'All States' : f[0].toUpperCase() + f.substring(1);
+                        return DropdownMenuItem(
+                          value: f,
+                          child: Text(label, style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary)),
+                        );
+                      }).toList(),
+                      onChanged: (v) {
+                        setState(() => _stateFilter = v);
+                        _load();
+                      },
+                    ),
                   ),
                 ),
-              );
-            }).toList(),
-          ),
-        ),
-
-        // ── Priority filter ──
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            children: [
-              _priorityChip(null, 'All Priorities', colors),
-              ..._priorityLabels.entries.map(
-                (e) => _priorityChip(e.key, e.value, colors),
+              ),
+              const SizedBox(width: 10),
+              // Priority filter dropdown
+              Expanded(
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: colors.surfaceBorder),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int?>(
+                      value: _priorityFilter,
+                      isExpanded: true,
+                      dropdownColor: colors.surface,
+                      icon: Icon(Icons.keyboard_arrow_down_rounded, color: colors.textSecondary, size: 20),
+                      style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary),
+                      items: [
+                        DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('All Priorities', style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary)),
+                        ),
+                        ..._priorityLabels.entries.map((e) => DropdownMenuItem<int?>(
+                          value: e.key,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _priorityColor(e.key),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(e.value, style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary)),
+                            ],
+                          ),
+                        )),
+                      ],
+                      onChanged: (v) {
+                        setState(() => _priorityFilter = v);
+                        _load();
+                      },
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -179,7 +221,7 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
 
         const SizedBox(height: 8),
 
-        // ── Alarm list ──
+        // ── Alarm list (responsive grid on wide) ──
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -189,40 +231,39 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
                           style: GoogleFonts.outfit(
                               color: colors.textSecondary, fontSize: 14)),
                     )
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: _alarms.length,
-                        itemBuilder: (ctx, i) => _buildAlarmTile(_alarms[i], colors),
-                      ),
+                  : LayoutBuilder(
+                      builder: (ctx, constraints) {
+                        final cols = constraints.maxWidth >= 1200 ? 3
+                            : constraints.maxWidth >= 800 ? 2
+                            : 1;
+                        if (cols == 1) {
+                          return RefreshIndicator(
+                            onRefresh: _load,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              itemCount: _alarms.length,
+                              itemBuilder: (c, i) => _buildAlarmTile(_alarms[i], colors),
+                            ),
+                          );
+                        }
+                        return RefreshIndicator(
+                          onRefresh: _load,
+                          child: GridView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: cols,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 0,
+                              mainAxisExtent: 180,
+                            ),
+                            itemCount: _alarms.length,
+                            itemBuilder: (c, i) => _buildAlarmTile(_alarms[i], colors),
+                          ),
+                        );
+                      },
                     ),
         ),
       ],
-    );
-  }
-
-  Widget _priorityChip(int? value, String label, ThemeConfig colors) {
-    final selected = _priorityFilter == value;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: FilterChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) {
-          setState(() => _priorityFilter = value);
-          _load();
-        },
-        selectedColor: _priorityColor(value ?? 5).withValues(alpha: 0.25),
-        labelStyle: GoogleFonts.outfit(
-          fontSize: 12,
-          color: selected ? _priorityColor(value ?? 5) : colors.textSecondary,
-        ),
-        backgroundColor: colors.surface,
-        side: BorderSide(
-          color: selected ? _priorityColor(value ?? 5) : colors.surfaceBorder,
-        ),
-      ),
     );
   }
 
@@ -309,19 +350,23 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
             const SizedBox(height: 4),
 
             // Row 3: device, value, threshold, time
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
               children: [
-                Icon(Icons.memory_rounded, size: 12, color: colors.textSecondary),
-                const SizedBox(width: 4),
-                Text(device, style: GoogleFonts.dmMono(fontSize: 11, color: colors.textSecondary)),
-                const Spacer(),
-                if (value != null && threshold != null) ...[
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.memory_rounded, size: 12, color: colors.textSecondary),
+                    const SizedBox(width: 4),
+                    Text(device, style: GoogleFonts.dmMono(fontSize: 11, color: colors.textSecondary)),
+                  ],
+                ),
+                if (value != null && threshold != null)
                   Text(
                     'Value: ${_fmt(value)} / Threshold: ${_fmt(threshold)}',
                     style: GoogleFonts.dmMono(fontSize: 10, color: prioColor),
                   ),
-                  const SizedBox(width: 8),
-                ],
                 Text(formattedTime,
                     style: GoogleFonts.dmMono(fontSize: 10, color: colors.textSecondary)),
               ],

@@ -105,229 +105,309 @@ class _LoginScreenState extends State<LoginScreen>
               padding: const EdgeInsets.symmetric(horizontal: 28),
               child: FadeTransition(
                 opacity: _fadeAnim,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // ── Logo / Branding ──
-                    _buildLogo(theme),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Vyuh HMI',
-                      style: GoogleFonts.outfit(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Pharma Plant Monitoring & Control',
-                      style: GoogleFonts.outfit(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.white54,
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-
-                    // ── Login Card ──
-                    Container(
-                      width: size.width > 500 ? 420 : double.infinity,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF131A2A),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 24,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      padding: const EdgeInsets.all(28),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              'Sign In',
-                              style: GoogleFonts.outfit(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '21 CFR Part 11 Compliant Access',
-                              style: GoogleFonts.outfit(
-                                fontSize: 12,
-                                color: Colors.white38,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Username
-                            _buildTextField(
-                              controller: _usernameController,
-                              label: 'Username',
-                              icon: Icons.person_outline_rounded,
-                              validator: (v) {
-                                if (v == null || v.trim().isEmpty) {
-                                  return 'Username is required';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Password
-                            _buildTextField(
-                              controller: _passwordController,
-                              label: 'Password',
-                              icon: Icons.lock_outline_rounded,
-                              obscure: _obscurePassword,
-                              suffix: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_off_rounded
-                                      : Icons.visibility_rounded,
-                                  color: Colors.white38,
-                                  size: 20,
-                                ),
-                                onPressed: () => setState(
-                                    () => _obscurePassword = !_obscurePassword),
-                              ),
-                              validator: (v) {
-                                if (v == null || v.isEmpty) {
-                                  return 'Password is required';
-                                }
-                                return null;
-                              },
-                              onFieldSubmitted: (_) => _handleLogin(),
-                            ),
-                            const SizedBox(height: 20),
-
-                            // Error message
-                            if (_error != null)
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                margin: const EdgeInsets.only(bottom: 16),
-                                decoration: BoxDecoration(
-                                  color:
-                                      Colors.redAccent.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: Colors.redAccent
-                                        .withValues(alpha: 0.3),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.error_outline,
-                                        color: Colors.redAccent, size: 18),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _error!,
-                                        style: GoogleFonts.outfit(
-                                          fontSize: 13,
-                                          color: Colors.redAccent,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                            // Login button
-                            SizedBox(
-                              height: 48,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _handleLogin,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF3B82F6),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  elevation: 0,
-                                ),
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : Text(
-                                        'Sign In',
-                                        style: GoogleFonts.outfit(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // ── Default credentials hint (dev only) ──
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.amber.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            'Default Accounts',
-                            style: GoogleFonts.outfit(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.amber,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          _credentialRow('admin', 'admin123', 'Admin'),
-                          _credentialRow('operator', 'operator123', 'Operator'),
-                          _credentialRow('viewer', 'viewer123', 'Viewer'),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // ── Footer ──
-                    Text(
-                      'Vyuh HMI v1.0 — 21 CFR Part 11',
-                      style: GoogleFonts.outfit(
-                        fontSize: 11,
-                        color: Colors.white24,
-                      ),
-                    ),
-                  ],
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: size.width >= 800
+                      ? _buildDesktopLayout(theme, size)
+                      : _buildMobileLayout(theme, size),
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMobileLayout(ThemeData theme, Size size) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildLogo(theme),
+        const SizedBox(height: 8),
+        _buildBrandingText(),
+        const SizedBox(height: 40),
+        _buildLoginCard(size.width > 500 ? 420 : double.infinity),
+        const SizedBox(height: 24),
+        _buildCredentialsHint(),
+        const SizedBox(height: 32),
+        _buildFooter(),
+      ],
+    );
+  }
+
+  Widget _buildDesktopLayout(ThemeData theme, Size size) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Left panel — branding
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildLogo(theme),
+                const SizedBox(height: 20),
+                Text(
+                  'Vyuh HMI',
+                  style: GoogleFonts.outfit(
+                    fontSize: 36,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Pharma Plant Monitoring & Control',
+                  style: GoogleFonts.outfit(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.white54,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                _featureLine(Icons.speed_rounded, 'Real-time PLC monitoring'),
+                const SizedBox(height: 12),
+                _featureLine(Icons.verified_user_rounded, '21 CFR Part 11 compliant'),
+                const SizedBox(height: 12),
+                _featureLine(Icons.assignment_turned_in_rounded, 'ISA-88 batch records'),
+                const SizedBox(height: 12),
+                _featureLine(Icons.warning_amber_rounded, 'ISA-18.2 alarm management'),
+                const SizedBox(height: 32),
+                _buildFooter(),
+              ],
+            ),
+          ),
+        ),
+        // Right panel — login form
+        SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildLoginCard(420),
+              const SizedBox(height: 16),
+              _buildCredentialsHint(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _featureLine(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFF3B82F6).withValues(alpha: 0.7)),
+        const SizedBox(width: 10),
+        Text(
+          text,
+          style: GoogleFonts.outfit(fontSize: 14, color: Colors.white60),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBrandingText() {
+    return Column(
+      children: [
+        Text(
+          'Vyuh HMI',
+          style: GoogleFonts.outfit(
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+            letterSpacing: 1.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Pharma Plant Monitoring & Control',
+          style: GoogleFonts.outfit(
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
+            color: Colors.white54,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoginCard(double cardWidth) {
+    return Container(
+      width: cardWidth,
+      decoration: BoxDecoration(
+        color: const Color(0xFF131A2A),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(28),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Sign In',
+              style: GoogleFonts.outfit(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '21 CFR Part 11 Compliant Access',
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                color: Colors.white38,
+              ),
+            ),
+            const SizedBox(height: 24),
+            _buildTextField(
+              controller: _usernameController,
+              label: 'Username',
+              icon: Icons.person_outline_rounded,
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Username is required';
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: _passwordController,
+              label: 'Password',
+              icon: Icons.lock_outline_rounded,
+              obscure: _obscurePassword,
+              suffix: IconButton(
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_off_rounded
+                      : Icons.visibility_rounded,
+                  color: Colors.white38,
+                  size: 20,
+                ),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Password is required';
+                return null;
+              },
+              onFieldSubmitted: (_) => _handleLogin(),
+            ),
+            const SizedBox(height: 20),
+            if (_error != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.redAccent.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline,
+                        color: Colors.redAccent, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: GoogleFonts.outfit(
+                          fontSize: 13,
+                          color: Colors.redAccent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            SizedBox(
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _handleLogin,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3B82F6),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  elevation: 0,
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        'Sign In',
+                        style: GoogleFonts.outfit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCredentialsHint() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.amber.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.amber.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        children: [
+          Text(
+            'Default Accounts',
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.amber,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _credentialRow('admin', 'admin123', 'Admin'),
+          _credentialRow('operator', 'operator123', 'Operator'),
+          _credentialRow('viewer', 'viewer123', 'Viewer'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Text(
+      'Vyuh HMI v1.0 — 21 CFR Part 11',
+      style: GoogleFonts.outfit(
+        fontSize: 11,
+        color: Colors.white24,
       ),
     );
   }

@@ -45,15 +45,17 @@ class WidgetRegistry {
       final reg = config.registerByKey(key);
       if (reg == null) return const SizedBox.shrink();
 
-      return SizedBox(
-        width: 190,
-        height: 80,
-        child: StatCard(
-          label: reg.label,
-          value: _liveValue(reg),
-          unit: reg.unit,
-          sparklineData: _historyValues(reg.address),
-          accentColor: reg.color,
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 140, maxWidth: 220),
+        child: SizedBox(
+          height: 80,
+          child: StatCard(
+            label: reg.label,
+            value: _liveValue(reg),
+            unit: reg.unit,
+            sparklineData: _historyValues(reg.address),
+            accentColor: reg.color,
+          ),
         ),
       );
     }).toList();

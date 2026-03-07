@@ -585,24 +585,42 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                 ? const Center(child: CircularProgressIndicator())
                 : entries.isEmpty
                     ? _buildEmptyState()
-                    : ListView(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        children: [
-                          if (connected.isNotEmpty) ...[
-                            _SectionHeader(
-                                label: 'CONNECTED',
-                                count: connected.length,
-                                color: HmiColors.healthy),
-                            ...connected.map((e) => _buildNetworkRow(e)),
-                          ],
-                          if (available.isNotEmpty) ...[
-                            _SectionHeader(
-                                label: 'AVAILABLE',
-                                count: available.length,
-                                color: HmiColors.textMuted),
-                            ...available.map((e) => _buildNetworkRow(e)),
-                          ],
-                        ],
+                    : LayoutBuilder(
+                        builder: (ctx, constraints) {
+                          final useGrid = constraints.maxWidth >= 800;
+                          final allItems = <Widget>[
+                            if (connected.isNotEmpty) ...[
+                              _SectionHeader(
+                                  label: 'CONNECTED',
+                                  count: connected.length,
+                                  color: HmiColors.healthy),
+                              if (useGrid)
+                                _DeviceGrid(
+                                  crossAxisCount: constraints.maxWidth >= 1200 ? 3 : 2,
+                                  children: connected.map((e) => _buildNetworkRow(e)).toList(),
+                                )
+                              else
+                                ...connected.map((e) => _buildNetworkRow(e)),
+                            ],
+                            if (available.isNotEmpty) ...[
+                              _SectionHeader(
+                                  label: 'AVAILABLE',
+                                  count: available.length,
+                                  color: HmiColors.textMuted),
+                              if (useGrid)
+                                _DeviceGrid(
+                                  crossAxisCount: constraints.maxWidth >= 1200 ? 3 : 2,
+                                  children: available.map((e) => _buildNetworkRow(e)).toList(),
+                                )
+                              else
+                                ...available.map((e) => _buildNetworkRow(e)),
+                            ],
+                          ];
+                          return ListView(
+                            padding: const EdgeInsets.only(bottom: 24),
+                            children: allItems,
+                          );
+                        },
                       ),
           ),
         ],
@@ -929,6 +947,35 @@ class _ScanProgressBar extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+// ── Desktop multi-column device grid ───────────────────────────────────────
+
+class _DeviceGrid extends StatelessWidget {
+  final List<Widget> children;
+  final int crossAxisCount;
+  const _DeviceGrid({required this.children, required this.crossAxisCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <Widget>[];
+    for (var i = 0; i < children.length; i += crossAxisCount) {
+      final rowChildren = <Widget>[];
+      for (var j = 0; j < crossAxisCount; j++) {
+        if (i + j < children.length) {
+          rowChildren.add(Expanded(child: children[i + j]));
+        } else {
+          rowChildren.add(const Expanded(child: SizedBox()));
+        }
+        if (j < crossAxisCount - 1) rowChildren.add(const SizedBox(width: 8));
+      }
+      rows.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: rowChildren,
+      ));
+    }
+    return Column(children: rows);
   }
 }
 

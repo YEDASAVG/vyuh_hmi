@@ -100,42 +100,56 @@ class _BatchRecordScreenState extends State<BatchRecordScreen> {
           ),
         ),
 
-        // ── Status filter chips ──
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
+        // ── Status filter dropdown ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            height: 40,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            children: _statusFilters.map((f) {
-              final selected = _statusFilter == f;
-              final label = f == null ? 'All' : f[0].toUpperCase() + f.substring(1);
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: FilterChip(
-                  label: Text(label),
-                  selected: selected,
-                  onSelected: (_) {
-                    setState(() => _statusFilter = f);
-                    _load();
-                  },
-                  selectedColor: _statusColor(f ?? 'all').withValues(alpha: 0.25),
-                  labelStyle: GoogleFonts.outfit(
-                    fontSize: 12,
-                    color: selected ? _statusColor(f ?? 'all') : colors.textSecondary,
-                  ),
-                  backgroundColor: colors.surface,
-                  side: BorderSide(
-                    color: selected ? _statusColor(f ?? 'all') : colors.surfaceBorder,
-                  ),
-                ),
-              );
-            }).toList(),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colors.surfaceBorder),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: _statusFilter,
+                isExpanded: true,
+                dropdownColor: colors.surface,
+                icon: Icon(Icons.keyboard_arrow_down_rounded, color: colors.textSecondary, size: 20),
+                style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary),
+                items: _statusFilters.map((f) {
+                  final label = f == null ? 'All Statuses' : f[0].toUpperCase() + f.substring(1);
+                  return DropdownMenuItem(
+                    value: f,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _statusColor(f ?? 'all'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(label, style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary)),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (v) {
+                  setState(() => _statusFilter = v);
+                  _load();
+                },
+              ),
+            ),
           ),
         ),
 
         const SizedBox(height: 8),
 
-        // ── Batch list ──
+        // ── Batch list (responsive grid on wide) ──
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -145,13 +159,36 @@ class _BatchRecordScreenState extends State<BatchRecordScreen> {
                           style: GoogleFonts.outfit(
                               color: colors.textSecondary, fontSize: 14)),
                     )
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: _batches.length,
-                        itemBuilder: (ctx, i) => _buildBatchTile(_batches[i], colors),
-                      ),
+                  : LayoutBuilder(
+                      builder: (ctx, constraints) {
+                        final cols = constraints.maxWidth >= 1200 ? 3
+                            : constraints.maxWidth >= 800 ? 2
+                            : 1;
+                        if (cols == 1) {
+                          return RefreshIndicator(
+                            onRefresh: _load,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              itemCount: _batches.length,
+                              itemBuilder: (c, i) => _buildBatchTile(_batches[i], colors),
+                            ),
+                          );
+                        }
+                        return RefreshIndicator(
+                          onRefresh: _load,
+                          child: GridView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: cols,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 0,
+                              mainAxisExtent: 220,
+                            ),
+                            itemCount: _batches.length,
+                            itemBuilder: (c, i) => _buildBatchTile(_batches[i], colors),
+                          ),
+                        );
+                      },
                     ),
         ),
       ],
