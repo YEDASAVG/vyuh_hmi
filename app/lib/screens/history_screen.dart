@@ -1,15 +1,20 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../config/dashboard_config.dart';
+import '../config/hmi_theme_engine.dart';
 import '../models/plc_data.dart';
 import '../stores/dashboard_store.dart';
 import '../theme/hmi_colors.dart';
 
-/// A grouped snapshot — one per second with all register values.
+// ── Snapshot model ─────────────────────────────────────────────────────────
+
 class _Snapshot {
   final DateTime time;
   double temp;
@@ -43,7 +48,41 @@ class _Snapshot {
   Color get batchColor => HmiColors.batchStateColor(batchLabel);
 }
 
-/// History screen — shows past readings per device, auto-refreshes.
+// ── Chart channel descriptor ───────────────────────────────────────────────
+
+class _Channel {
+  final String label;
+  final String unit;
+  final Color color;
+  final double Function(_Snapshot s) getValue;
+
+  const _Channel({
+    required this.label,
+    required this.unit,
+    required this.color,
+    required this.getValue,
+  });
+}
+
+// ── Time‐range presets ─────────────────────────────────────────────────────
+
+class _TimeRange {
+  final String label;
+  final int limit;       // raw rows to fetch
+  final int intervalSec; // averaging bucket size
+
+  const _TimeRange(this.label, this.limit, this.intervalSec);
+}
+
+const _timeRanges = <_TimeRange>[
+  _TimeRange('5 min  (30 s avg)', 2400, 30),
+  _TimeRange('10 min (1 min avg)', 4800, 60),
+  _TimeRange('30 min (2 min avg)', 14400, 120),
+  _TimeRange('1 hour (5 min avg)', 28800, 300),
+];
+
+// ── Screen ─────────────────────────────────────────────────────────────────
+
 class HistoryScreen extends StatefulWidget {
   final DashboardStore store;
 
@@ -57,7 +96,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   List<_Snapshot> _snapshots = [];
   bool _loading = true;
   String? _error;
-  int _limit = 200;
+  int _limit = 4800; // ~10 min of data (8 registers × 60s × 10min)
+  int _intervalSec = 60; // averaging bucket size in seconds
   Timer? _refreshTimer;
   late String _selectedDeviceId;
 
@@ -66,7 +106,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.initState();
     _selectedDeviceId = widget.store.activeDeviceId;
     _fetchHistory();
-    // Auto-refresh every 5 seconds
     _refreshTimer = Timer.periodic(
         const Duration(seconds: 5), (_) => _fetchHistory(silent: true));
   }
@@ -106,12 +145,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   List<_Snapshot> _groupByTimestamp(List<PlcData> raw) {
-    final Map<String, _Snapshot> map = {};
+    // Step 1: Group raw rows into per-second snapshots
+    final Map<String, _Snapshot> secMap = {};
     for (final d in raw) {
       final dt = DateTime.tryParse(d.timestamp);
       if (dt == null) continue;
       final key = DateFormat('yyyy-MM-dd HH:mm:ss').format(dt.toLocal());
-      final snap = map.putIfAbsent(key, () => _Snapshot(dt));
+      final snap = secMap.putIfAbsent(key, () => _Snapshot(dt));
       switch (d.register) {
         case 1028:
           snap.temp = d.value;
@@ -131,158 +171,273 @@ class _HistoryScreenState extends State<HistoryScreen> {
           snap.pH = d.value / 10.0;
       }
     }
-    final list = map.values.toList();
-    list.sort((a, b) => b.time.compareTo(a.time));
-    return list;
+
+    // Step 2: Downsample into N-second buckets by averaging
+    final secList = secMap.values.toList()
+      ..sort((a, b) => a.time.compareTo(b.time));
+
+    if (secList.isEmpty || _intervalSec <= 1) return secList;
+
+    final Map<int, List<_Snapshot>> buckets = {};
+    final epoch0 = secList.first.time.millisecondsSinceEpoch;
+    for (final s in secList) {
+      final offset = s.time.millisecondsSinceEpoch - epoch0;
+      final bucket = offset ~/ (_intervalSec * 1000);
+      buckets.putIfAbsent(bucket, () => []).add(s);
+    }
+
+    final averaged = <_Snapshot>[];
+    for (final entry in buckets.entries) {
+      final group = entry.value;
+      final n = group.length;
+      // Use the midpoint time of the bucket
+      final midTime = group[n ~/ 2].time;
+      final avg = _Snapshot(midTime);
+      avg.temp = group.fold(0.0, (s, e) => s + e.temp) / n;
+      avg.pressure = group.fold(0.0, (s, e) => s + e.pressure) / n;
+      avg.humidity = group.fold(0.0, (s, e) => s + e.humidity) / n;
+      avg.flow = group.fold(0.0, (s, e) => s + e.flow) / n;
+      avg.agitator = group.fold(0.0, (s, e) => s + e.agitator) / n;
+      avg.pH = group.fold(0.0, (s, e) => s + e.pH) / n;
+      avg.progress = group.last.progress;
+      // batch state = most frequent in the bucket
+      final stateFreq = <int, int>{};
+      for (final g in group) {
+        stateFreq[g.batchState] = (stateFreq[g.batchState] ?? 0) + 1;
+      }
+      avg.batchState = stateFreq.entries
+          .reduce((a, b) => a.value >= b.value ? a : b)
+          .key;
+      averaged.add(avg);
+    }
+    averaged.sort((a, b) => a.time.compareTo(b.time));
+    return averaged;
   }
+
+  // ── Channel definitions ────────────────────────────────────────
+
+  static final _channels = <_Channel>[
+    _Channel(
+        label: 'Temperature',
+        unit: '°C',
+        color: const Color(0xFFE8763A),
+        getValue: (s) => s.temp),
+    _Channel(
+        label: 'Pressure',
+        unit: 'PSI',
+        color: const Color(0xFF3B82F6),
+        getValue: (s) => s.pressure),
+    _Channel(
+        label: 'Flow Rate',
+        unit: 'L/min',
+        color: const Color(0xFF22C55E),
+        getValue: (s) => s.flow),
+    _Channel(
+        label: 'pH Level',
+        unit: 'pH',
+        color: const Color(0xFFAB47BC),
+        getValue: (s) => s.pH),
+    _Channel(
+        label: 'Humidity',
+        unit: '%RH',
+        color: const Color(0xFF06B6D4),
+        getValue: (s) => s.humidity),
+    _Channel(
+        label: 'Agitator',
+        unit: 'RPM',
+        color: const Color(0xFFF59E0B),
+        getValue: (s) => s.agitator),
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final colors = ActiveTheme.of(context);
+
     return Scaffold(
-      backgroundColor: HmiColors.void_,
+      backgroundColor: colors.background,
       body: Column(
         children: [
-          // ── Header with device picker ──
-          _buildHeader(),
-          // ── Body ──
-          Expanded(child: _buildBody()),
+          _buildHeader(colors),
+          Expanded(child: _buildBody(colors)),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
+  // ── Header ─────────────────────────────────────────────────────
+
+  Widget _buildHeader(ThemeConfig colors) {
     return Observer(builder: (_) {
       final devices = widget.store.devices;
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         decoration: BoxDecoration(
-          color: HmiColors.surface,
+          color: colors.surface,
           border: Border(
-            bottom: BorderSide(color: HmiColors.surfaceBorder, width: 1),
+            bottom: BorderSide(color: colors.surfaceBorder, width: 1),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Icon(Icons.history_rounded, size: 20, color: HmiColors.accent),
-                const SizedBox(width: 8),
-                Text(
-                  'History',
-                  style: GoogleFonts.outfit(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: HmiColors.textPrimary,
-                  ),
-                ),
-                const Spacer(),
-                // Limit picker
-                PopupMenuButton<int>(
-                  icon: Icon(Icons.filter_list_rounded,
-                      size: 20, color: HmiColors.textSecondary),
-                  color: HmiColors.surface,
-                  onSelected: (val) {
-                    _limit = val;
-                    _fetchHistory();
-                  },
-                  itemBuilder: (_) => [
-                    for (final n in [100, 200, 400, 800])
-                      PopupMenuItem(
-                        value: n,
-                        child: Text(
-                          '~${n ~/ 8} snapshots',
-                          style: GoogleFonts.outfit(
-                              fontSize: 13, color: HmiColors.textPrimary),
+            Icon(Icons.show_chart_rounded,
+                size: 28, color: colors.accent),
+            const SizedBox(width: 12),
+            Text(
+              'HISTORIAN',
+              style: GoogleFonts.outfit(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(width: 24),
+            if (devices.length > 1)
+              ...devices.map((dev) {
+                final isActive = dev.id == _selectedDeviceId;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _selectedDeviceId = dev.id);
+                      _fetchHistory();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? colors.accent.withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isActive
+                              ? colors.accent.withValues(alpha: 0.5)
+                              : Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: dev.isConnected
+                                  ? colors.healthy
+                                  : colors.danger,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            dev.name,
+                            style: GoogleFonts.outfit(
+                              fontSize: 15,
+                              fontWeight: isActive
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: isActive
+                                  ? colors.accent
+                                  : colors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            const Spacer(),
+            // Snapshots count badge
+            if (_snapshots.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: colors.accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.data_array_rounded,
+                        size: 18, color: colors.accent),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${_snapshots.length} pts · ${_intervalSec}s avg',
+                      style: GoogleFonts.dmMono(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: colors.accent),
+                    ),
                   ],
                 ),
-                IconButton(
-                  icon: Icon(Icons.refresh_rounded,
-                      size: 20, color: HmiColors.textSecondary),
-                  onPressed: _fetchHistory,
-                  tooltip: 'Refresh',
-                ),
-              ],
-            ),
-            if (devices.length > 1) ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 34,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: devices.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (ctx, i) {
-                    final dev = devices[i];
-                    final isActive = dev.id == _selectedDeviceId;
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() => _selectedDeviceId = dev.id);
-                        _fetchHistory();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isActive
-                              ? HmiColors.accent.withValues(alpha: 0.15)
-                              : Colors.white.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isActive
-                                ? HmiColors.accent.withValues(alpha: 0.5)
-                                : Colors.white.withValues(alpha: 0.1),
+              ),
+            const SizedBox(width: 12),
+            PopupMenuButton<_TimeRange>(
+              icon: Icon(Icons.filter_list_rounded,
+                  size: 24, color: colors.textSecondary),
+              color: colors.surface,
+              onSelected: (val) {
+                _limit = val.limit;
+                _intervalSec = val.intervalSec;
+                _fetchHistory();
+              },
+              itemBuilder: (_) => [
+                for (final r in _timeRanges)
+                  PopupMenuItem(
+                    value: r,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _limit == r.limit
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_unchecked,
+                          size: 18,
+                          color: _limit == r.limit
+                              ? colors.accent
+                              : colors.textMuted,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          r.label,
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            color: _limit == r.limit
+                                ? colors.accent
+                                : colors.textPrimary,
+                            fontWeight: _limit == r.limit
+                                ? FontWeight.w600
+                                : FontWeight.w400,
                           ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: dev.isConnected
-                                    ? HmiColors.healthy
-                                    : HmiColors.danger,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              dev.name,
-                              style: GoogleFonts.outfit(
-                                fontSize: 12,
-                                fontWeight: isActive
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: isActive
-                                    ? HmiColors.accent
-                                    : HmiColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: Icon(Icons.refresh_rounded,
+                  size: 24, color: colors.textSecondary),
+              onPressed: _fetchHistory,
+              tooltip: 'Refresh',
+            ),
           ],
         ),
       );
     });
   }
 
-  Widget _buildBody() {
+  // ── Body ───────────────────────────────────────────────────────
+
+  Widget _buildBody(ThemeConfig colors) {
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: HmiColors.accent),
-      );
+      return Center(
+          child: CircularProgressIndicator(color: colors.accent));
     }
 
     if (_error != null) {
@@ -290,21 +445,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, color: HmiColors.danger, size: 48),
-            const SizedBox(height: 12),
+            Icon(Icons.error_outline, color: colors.danger, size: 64),
+            const SizedBox(height: 16),
             Text('Failed to load history',
                 style: GoogleFonts.outfit(
-                    fontSize: 16, color: HmiColors.textPrimary)),
-            const SizedBox(height: 4),
+                    fontSize: 22, color: colors.textPrimary)),
+            const SizedBox(height: 8),
             Text(_error!,
                 style: GoogleFonts.outfit(
-                    fontSize: 12, color: HmiColors.textMuted),
+                    fontSize: 14, color: colors.textMuted),
                 textAlign: TextAlign.center),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             TextButton(
               onPressed: _fetchHistory,
               child: Text('Retry',
-                  style: GoogleFonts.outfit(color: HmiColors.accent)),
+                  style: GoogleFonts.outfit(
+                      fontSize: 18, color: colors.accent)),
             ),
           ],
         ),
@@ -316,248 +472,259 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.hourglass_empty_rounded,
-                size: 48, color: HmiColors.textMuted),
-            const SizedBox(height: 12),
+            Icon(Icons.show_chart_rounded,
+                size: 80, color: colors.textMuted),
+            const SizedBox(height: 16),
             Text('No history yet',
                 style: GoogleFonts.outfit(
-                    fontSize: 16, color: HmiColors.textSecondary)),
-            const SizedBox(height: 4),
-            Text('Data will appear once the PLC starts collecting.',
+                    fontSize: 22, color: colors.textSecondary)),
+            const SizedBox(height: 8),
+            Text('Charts will appear once the PLC starts collecting.',
                 style: GoogleFonts.outfit(
-                    fontSize: 12, color: HmiColors.textMuted)),
+                    fontSize: 16, color: colors.textMuted)),
           ],
         ),
       );
     }
 
+    // Fill all vertical space with a 3×2 grid of chart panels
+    const rows = 3; // 6 channels → 3 rows of 2
+    const gap = 14.0;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 500;
-        return Column(
-          children: [
-            // Summary bar
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: HmiColors.surface.withValues(alpha: 0.5),
-              child: Row(
-                children: [
-                  _summaryChip(
-                      Icons.data_array_rounded,
-                      '${_snapshots.length} snapshots',
-                      HmiColors.accent),
-                  const SizedBox(width: 12),
-                  _summaryChip(
-                      Icons.timer_outlined,
-                      '1/sec',
-                      HmiColors.info),
-                  const Spacer(),
-                  Text(
-                    'Auto-refresh 5s',
-                    style: GoogleFonts.outfit(
-                        fontSize: 10, color: HmiColors.textMuted),
+        final totalH = constraints.maxHeight;
+        final panelH = (totalH - gap * (rows - 1) - 24) / rows; // 24 = top+bottom pad
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: Column(
+            children: [
+              for (var r = 0; r < rows; r++) ...[
+                if (r > 0) const SizedBox(height: gap),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                          child: _buildChartPanel(
+                              _channels[r * 2], colors, panelH)),
+                      const SizedBox(width: 14),
+                      Expanded(
+                          child: (r * 2 + 1 < _channels.length)
+                              ? _buildChartPanel(
+                                  _channels[r * 2 + 1], colors, panelH)
+                              : const SizedBox()),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: HmiColors.surfaceBorder),
-            if (!isNarrow) ...[
-              // Table header (wide only)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                color: HmiColors.surface,
-                child: Row(
-                  children: [
-                    _headerCell('TIME', flex: 2),
-                    _headerCell('TEMP'),
-                    _headerCell('PSI'),
-                    _headerCell('RH%'),
-                    _headerCell('FLOW'),
-                    _headerCell('RPM'),
-                    _headerCell('pH'),
-                    _headerCell('STATE', flex: 2),
-                  ],
                 ),
-              ),
-              const Divider(height: 1, color: HmiColors.surfaceBorder),
+              ],
             ],
-            // Data rows
-            Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                itemCount: _snapshots.length,
-                itemBuilder: (ctx, i) => isNarrow
-                    ? _buildCardRow(_snapshots[i], i)
-                    : _buildRow(_snapshots[i], i),
-              ),
-            ),
-          ],
+          ),
         );
       },
     );
   }
 
-  Widget _summaryChip(IconData icon, String text, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        Text(text,
-            style: GoogleFonts.outfit(fontSize: 11, color: color)),
-      ],
-    );
-  }
+  // ── Individual chart panel ─────────────────────────────────────
 
-  Widget _headerCell(String text, {int flex = 1}) {
-    return Expanded(
-      flex: flex,
-      child: Text(
-        text,
-        style: GoogleFonts.dmMono(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
-          color: HmiColors.textMuted,
-        ),
-      ),
-    );
-  }
+  Widget _buildChartPanel(_Channel channel, ThemeConfig colors, double panelH) {
+    final values = _snapshots.map(channel.getValue).toList();
 
-  Widget _buildRow(_Snapshot snap, int index) {
-    final timeStr = DateFormat('HH:mm:ss').format(snap.time.toLocal());
-    final isEven = index % 2 == 0;
+    // Compute Y bounds
+    double minY = values.isEmpty ? 0 : values.reduce(math.min);
+    double maxY = values.isEmpty ? 100 : values.reduce(math.max);
+    final pad = (maxY - minY) * 0.15;
+    minY = minY - pad;
+    maxY = maxY + pad;
+    if ((maxY - minY).abs() < 1) {
+      minY -= 1;
+      maxY += 1;
+    }
+
+    final latest = values.isNotEmpty ? values.last : 0.0;
+    final minVal = values.isEmpty ? 0.0 : values.reduce(math.min);
+    final maxVal = values.isEmpty ? 0.0 : values.reduce(math.max);
+
+    final spots = <FlSpot>[];
+    for (var i = 0; i < values.length; i++) {
+      spots.add(FlSpot(i.toDouble(), values[i]));
+    }
+
+    final xCount = spots.length;
+    final labelInterval =
+        xCount > 6 ? (xCount / 5).ceil().toDouble() : 1.0;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: isEven ? Colors.transparent : HmiColors.surface.withValues(alpha: 0.3),
-      child: Row(
-        children: [
-          // Time
-          Expanded(
-            flex: 2,
-            child: Text(
-              timeStr,
-              style: GoogleFonts.dmMono(
-                  fontSize: 12, color: HmiColors.textSecondary),
-            ),
-          ),
-          // Temp
-          _dataCell('${snap.temp.toInt()}', HmiColors.accent),
-          // Pressure
-          _dataCell('${snap.pressure.toInt()}', HmiColors.info),
-          // Humidity
-          _dataCell('${snap.humidity.toInt()}', HmiColors.info),
-          // Flow
-          _dataCell('${snap.flow.toInt()}', HmiColors.healthy),
-          // Agitator
-          _dataCell('${snap.agitator.toInt()}', HmiColors.warning),
-          // pH
-          _dataCell(snap.pH.toStringAsFixed(1), const Color(0xFFAB47BC)),
-          // Batch state
-          Expanded(
-            flex: 2,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: snap.batchColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: Text(
-                '${snap.batchLabel} ${snap.progress.toInt()}%',
-                style: GoogleFonts.dmMono(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: snap.batchColor,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _dataCell(String value, Color color) {
-    return Expanded(
-      child: Text(
-        value,
-        style: GoogleFonts.dmMono(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  /// Mobile-friendly card layout for a single history snapshot.
-  Widget _buildCardRow(_Snapshot snap, int index) {
-    final timeStr = DateFormat('HH:mm:ss').format(snap.time.toLocal());
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: HmiColors.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: HmiColors.surfaceBorder),
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.surfaceBorder),
       ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top row: time + batch state
+          // Title row — big readable fonts
           Row(
             children: [
-              Icon(Icons.access_time_rounded, size: 14, color: HmiColors.textMuted),
-              const SizedBox(width: 4),
+              Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: channel.color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
               Text(
-                timeStr,
-                style: GoogleFonts.dmMono(fontSize: 12, fontWeight: FontWeight.w600, color: HmiColors.textSecondary),
+                channel.label.toUpperCase(),
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(width: 20),
+              Text(
+                'MIN ${minVal.toStringAsFixed(1)}',
+                style: GoogleFonts.dmMono(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white70),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                'MAX ${maxVal.toStringAsFixed(1)}',
+                style: GoogleFonts.dmMono(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white70),
               ),
               const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: snap.batchColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${snap.batchLabel} ${snap.progress.toInt()}%',
-                  style: GoogleFonts.dmMono(fontSize: 10, fontWeight: FontWeight.w600, color: snap.batchColor),
+              // Current value — large and bright
+              Text(
+                '${latest.toStringAsFixed(1)} ${channel.unit}',
+                style: GoogleFonts.dmMono(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: channel.color,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          // Grid of values
-          Wrap(
-            spacing: 16,
-            runSpacing: 6,
-            children: [
-              _miniStat('TEMP', '${snap.temp.toInt()}°C', HmiColors.accent),
-              _miniStat('PSI', '${snap.pressure.toInt()}', HmiColors.info),
-              _miniStat('RH', '${snap.humidity.toInt()}%', HmiColors.info),
-              _miniStat('FLOW', '${snap.flow.toInt()}', HmiColors.healthy),
-              _miniStat('RPM', '${snap.agitator.toInt()}', HmiColors.warning),
-              _miniStat('pH', snap.pH.toStringAsFixed(1), const Color(0xFFAB47BC)),
-            ],
+          const SizedBox(height: 10),
+          // Chart — fills remaining space
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: (maxY - minY) / 4,
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: colors.surfaceBorder,
+                    strokeWidth: 0.6,
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 56,
+                      interval: (maxY - minY) / 4,
+                      getTitlesWidget: (value, meta) => Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Text(
+                          value.toStringAsFixed(0),
+                          style: GoogleFonts.dmMono(
+                              fontSize: 14,
+                              color: Colors.white60),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 28,
+                      interval: labelInterval,
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        if (idx < 0 || idx >= _snapshots.length) {
+                          return const SizedBox.shrink();
+                        }
+                        return Text(
+                          DateFormat('HH:mm').format(
+                              _snapshots[idx].time.toLocal()),
+                          style: GoogleFonts.dmMono(
+                              fontSize: 14,
+                              color: Colors.white60),
+                        );
+                      },
+                    ),
+                  ),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                minX: 0,
+                maxX: spots.isEmpty ? 1 : (spots.length - 1).toDouble(),
+                minY: minY,
+                maxY: maxY,
+                lineTouchData: LineTouchData(
+                  handleBuiltInTouches: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (_) => colors.surface,
+                    getTooltipItems: (touchedSpots) =>
+                        touchedSpots.map((s) {
+                      final idx = s.x.toInt();
+                      final time = idx >= 0 && idx < _snapshots.length
+                          ? DateFormat('HH:mm:ss').format(
+                              _snapshots[idx].time.toLocal())
+                          : '';
+                      return LineTooltipItem(
+                        '${s.y.toStringAsFixed(1)} ${channel.unit}\n$time',
+                        GoogleFonts.dmMono(
+                          fontSize: 16,
+                          color: channel.color,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    curveSmoothness: 0.2,
+                    color: channel.color,
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          channel.color.withValues(alpha: 0.25),
+                          channel.color.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                    shadow: Shadow(
+                      color: channel.color.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                    ),
+                  ),
+                ],
+              ),
+              duration: const Duration(milliseconds: 200),
+            ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniStat(String label, String value, Color color) {
-    return SizedBox(
-      width: 65,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: GoogleFonts.dmMono(fontSize: 9, fontWeight: FontWeight.w700, color: HmiColors.textMuted, letterSpacing: 0.5)),
-          Text(value, style: GoogleFonts.dmMono(fontSize: 13, fontWeight: FontWeight.w500, color: color)),
         ],
       ),
     );

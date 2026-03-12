@@ -37,41 +37,43 @@ class BatchStateWidget extends StatelessWidget {
     final p = (progress / 100).clamp(0.0, 1.0);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: HmiColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: HmiColors.surfaceBorder),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HmiColors.surfaceBorder, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Batch Reactor',
+            'BATCH REACTOR',
             style: GoogleFonts.outfit(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
+              fontSize: 26,
+              fontWeight: FontWeight.w600,
               color: HmiColors.textSecondary,
+              letterSpacing: 1.5,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Row(
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
+                  horizontal: 16,
+                  vertical: 8,
                 ),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   state.name.toUpperCase(),
                   style: GoogleFonts.dmMono(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w600,
                     color: color,
+                    letterSpacing: 2,
                   ),
                 ),
               ),
@@ -79,18 +81,19 @@ class BatchStateWidget extends StatelessWidget {
               Text(
                 '${(p * 100).toStringAsFixed(0)}%',
                 style: GoogleFonts.dmMono(
-                  fontSize: 14,
-                  color: HmiColors.textSecondary,
+                  fontSize: 42,
+                  fontWeight: FontWeight.w500,
+                  color: color,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           ClipRRect(
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(5),
             child: LinearProgressIndicator(
               value: p,
-              minHeight: 6,
+              minHeight: 10,
               backgroundColor: HmiColors.surfaceBorder,
               valueColor: AlwaysStoppedAnimation<Color>(color),
             ),

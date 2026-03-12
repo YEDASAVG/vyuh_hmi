@@ -3,19 +3,20 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../config/dashboard_config.dart';
+import '../config/hmi_theme_engine.dart';
 import '../models/plc_device.dart';
 import '../services/api_service.dart';
-import '../theme/hmi_colors.dart';
 
 // ── Unified list entry (registered device OR discovered scan result) ──────────
 class _NetworkEntry {
   final String name;
   final String address;
   final String protocol;
-  final bool isRegistered; // exists in server registry
+  final bool isRegistered;
   final bool isConnected;
-  final String? deviceId; // null for unregistered discovered devices
-  final String? serverName; // OPC UA friendly name
+  final String? deviceId;
+  final String? serverName;
 
   const _NetworkEntry({
     required this.name,
@@ -52,7 +53,7 @@ class _DeviceListScreenState extends State<DeviceListScreen>
   List<Map<String, dynamic>> _discovered = [];
   bool _loading = true;
   bool _scanning = false;
-  String? _connectingKey; // address being connected right now
+  String? _connectingKey;
 
   late final AnimationController _radarCtrl;
 
@@ -63,7 +64,7 @@ class _DeviceListScreenState extends State<DeviceListScreen>
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
-    _loadDevices(thenScan: true); // auto-scan on open, just like WiFi
+    _loadDevices(thenScan: true);
   }
 
   @override
@@ -71,8 +72,6 @@ class _DeviceListScreenState extends State<DeviceListScreen>
     _radarCtrl.dispose();
     super.dispose();
   }
-
-  // ── Data loading ─────────────────────────────────────────────────
 
   Future<void> _loadDevices({bool thenScan = false}) async {
     setState(() => _loading = true);
@@ -97,8 +96,6 @@ class _DeviceListScreenState extends State<DeviceListScreen>
       _scanning = false;
     });
   }
-
-  // ── Build a merged, sorted entry list ────────────────────────────
 
   List<_NetworkEntry> get _entries {
     final entries = <_NetworkEntry>[];
@@ -141,8 +138,6 @@ class _DeviceListScreenState extends State<DeviceListScreen>
     return entries;
   }
 
-  // ── Actions ──────────────────────────────────────────────────────
-
   Future<void> _connectEntry(_NetworkEntry entry) async {
     setState(() => _connectingKey = entry.address);
 
@@ -168,30 +163,35 @@ class _DeviceListScreenState extends State<DeviceListScreen>
   }
 
   Future<void> _removeDevice(PlcDevice device) async {
+    final colors = ActiveTheme.of(context);
     Navigator.pop(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: HmiColors.surface,
+        backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: Text('Forget ${device.name}?',
             style: GoogleFonts.outfit(
-                fontWeight: FontWeight.w600, color: HmiColors.textPrimary)),
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: colors.textPrimary)),
         content: Text(
             'Removes this device from the list. You can add it again anytime.',
             style: GoogleFonts.outfit(
-                fontSize: 13, color: HmiColors.textSecondary)),
+                fontSize: 16, color: colors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text('Cancel',
-                style: GoogleFonts.outfit(color: HmiColors.textMuted)),
+                style: GoogleFonts.outfit(
+                    fontSize: 16, color: colors.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red[300]),
             child: Text('Forget',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                style: GoogleFonts.outfit(
+                    fontSize: 16, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -202,49 +202,49 @@ class _DeviceListScreenState extends State<DeviceListScreen>
     }
   }
 
-  // ── Bottom sheet for connected device info ─────────────────────
-
   void _showDeviceInfo(PlcDevice device) {
+    final colors = ActiveTheme.of(context);
     final proto = device.protocol.toLowerCase();
     final protoColor = proto == 'opcua' ? Colors.teal : Colors.blue;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: HmiColors.surface,
+      backgroundColor: colors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        padding: const EdgeInsets.fromLTRB(28, 20, 28, 36),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(
               child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
+                width: 40,
+                height: 5,
+                margin: const EdgeInsets.only(bottom: 24),
                 decoration: BoxDecoration(
                   color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(3),
                 ),
               ),
             ),
             Row(
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
                     color: protoColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                         color: protoColor.withValues(alpha: 0.4), width: 1.5),
                   ),
-                  child: Icon(Icons.memory_rounded, color: protoColor, size: 24),
+                  child: Icon(Icons.memory_rounded,
+                      color: protoColor, size: 28),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,27 +252,27 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                       Text(
                         device.name,
                         style: GoogleFonts.outfit(
-                          fontSize: 17,
+                          fontSize: 22,
                           fontWeight: FontWeight.w700,
-                          color: HmiColors.textPrimary,
+                          color: colors.textPrimary,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 4),
                       Row(children: [
                         Container(
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(
+                          width: 9,
+                          height: 9,
+                          decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: HmiColors.healthy,
+                            color: colors.healthy,
                           ),
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 6),
                         Text('CONNECTED',
                             style: GoogleFonts.jetBrainsMono(
-                                fontSize: 10,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: HmiColors.healthy,
+                                color: colors.healthy,
                                 letterSpacing: 1.2)),
                       ]),
                     ],
@@ -280,17 +280,19 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                 ),
               ],
             ),
+            const SizedBox(height: 24),
+            Divider(color: colors.surfaceBorder),
             const SizedBox(height: 20),
-            const Divider(color: HmiColors.surfaceBorder),
-            const SizedBox(height: 16),
-            _InfoRow(label: 'ID', value: device.id),
-            const SizedBox(height: 8),
-            _InfoRow(label: 'ADDRESS', value: device.address),
-            const SizedBox(height: 8),
+            _InfoRow(label: 'ID', value: device.id, colors: colors),
+            const SizedBox(height: 12),
+            _InfoRow(
+                label: 'ADDRESS', value: device.address, colors: colors),
+            const SizedBox(height: 12),
             _InfoRow(
                 label: 'PROTOCOL',
-                value: proto == 'opcua' ? 'OPC UA' : 'Modbus TCP'),
-            const SizedBox(height: 28),
+                value: proto == 'opcua' ? 'OPC UA' : 'Modbus TCP',
+                colors: colors),
+            const SizedBox(height: 32),
             if (widget.canManage) ...[
               SizedBox(
                 width: double.infinity,
@@ -298,18 +300,21 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                   onPressed: () => _disconnectDevice(device),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
-                        color: Colors.orange.withValues(alpha: 0.6), width: 1.5),
+                        color: Colors.orange.withValues(alpha: 0.6),
+                        width: 1.5),
                     foregroundColor: Colors.orange[300],
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
+                    textStyle: GoogleFonts.outfit(fontSize: 16),
                   ),
-                  icon: const Icon(Icons.link_off_rounded, size: 18),
+                  icon: const Icon(Icons.link_off_rounded, size: 22),
                   label: Text('Disconnect',
-                      style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                      style: GoogleFonts.outfit(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -318,18 +323,20 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                     side: BorderSide(
                         color: Colors.red.withValues(alpha: 0.5), width: 1.5),
                     foregroundColor: Colors.red[300],
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
+                    textStyle: GoogleFonts.outfit(fontSize: 16),
                   ),
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 22),
                   label: Text('Forget Device',
-                      style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                      style: GoogleFonts.outfit(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
             if (widget.onDeviceTap != null) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -338,14 +345,15 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                     widget.onDeviceTap?.call(device);
                   },
                   style: FilledButton.styleFrom(
-                    backgroundColor: HmiColors.accent,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: colors.accent,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  icon: const Icon(Icons.bar_chart_rounded, size: 18),
+                  icon: const Icon(Icons.bar_chart_rounded, size: 22),
                   label: Text('View Live Data',
-                      style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                      style: GoogleFonts.outfit(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -355,14 +363,13 @@ class _DeviceListScreenState extends State<DeviceListScreen>
     );
   }
 
-  // ── Add device dialog ────────────────────────────────────────────
-
   Future<void> _showAddDeviceDialog({
     String? prefillAddress,
     String? prefillName,
     String? prefillProtocol,
     bool autoConnect = false,
   }) async {
+    final colors = ActiveTheme.of(context);
     final idCtrl = TextEditingController();
     final nameCtrl = TextEditingController(text: prefillName ?? '');
     final addrCtrl = TextEditingController(text: prefillAddress ?? '');
@@ -370,41 +377,42 @@ class _DeviceListScreenState extends State<DeviceListScreen>
 
     final inputDecoration = InputDecoration(
       filled: true,
-      fillColor: HmiColors.void_,
+      fillColor: colors.background,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: HmiColors.surfaceBorder),
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: colors.surfaceBorder),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: HmiColors.surfaceBorder),
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: colors.surfaceBorder),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: HmiColors.accent, width: 1.5),
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: colors.accent, width: 1.5),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      labelStyle: GoogleFonts.outfit(fontSize: 13, color: HmiColors.textMuted),
-      hintStyle: GoogleFonts.outfit(fontSize: 12, color: HmiColors.textMuted),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      labelStyle: GoogleFonts.outfit(fontSize: 15, color: colors.textMuted),
+      hintStyle: GoogleFonts.outfit(fontSize: 14, color: colors.textMuted),
     );
 
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: HmiColors.surface,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          backgroundColor: colors.surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
           title: Row(
             children: [
-              const Icon(Icons.add_circle_outline_rounded,
-                  size: 20, color: HmiColors.accent),
-              const SizedBox(width: 8),
+              Icon(Icons.add_circle_outline_rounded,
+                  size: 24, color: colors.accent),
+              const SizedBox(width: 10),
               Text('Add PLC Device',
                   style: GoogleFonts.outfit(
-                      fontSize: 17,
+                      fontSize: 20,
                       fontWeight: FontWeight.w600,
-                      color: HmiColors.textPrimary)),
+                      color: colors.textPrimary)),
             ],
           ),
           content: SingleChildScrollView(
@@ -415,103 +423,105 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                 TextField(
                   controller: idCtrl,
                   style: GoogleFonts.dmMono(
-                      fontSize: 13, color: HmiColors.textPrimary),
+                      fontSize: 15, color: colors.textPrimary),
                   decoration: inputDecoration.copyWith(
                     labelText: 'Device ID',
                     hintText: 'e.g. plc-04',
-                    prefixIcon: const Icon(Icons.tag,
-                        size: 18, color: HmiColors.textMuted),
+                    prefixIcon: Icon(Icons.tag,
+                        size: 20, color: colors.textMuted),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 TextField(
                   controller: nameCtrl,
                   style: GoogleFonts.outfit(
-                      fontSize: 13, color: HmiColors.textPrimary),
+                      fontSize: 15, color: colors.textPrimary),
                   decoration: inputDecoration.copyWith(
                     labelText: 'Device Name',
                     hintText: 'e.g. Mixing Tank',
-                    prefixIcon: const Icon(Icons.label_outline_rounded,
-                        size: 18, color: HmiColors.textMuted),
+                    prefixIcon: Icon(Icons.label_outline_rounded,
+                        size: 20, color: colors.textMuted),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 TextField(
                   controller: addrCtrl,
                   style: GoogleFonts.dmMono(
-                      fontSize: 13, color: HmiColors.textPrimary),
+                      fontSize: 15, color: colors.textPrimary),
                   decoration: inputDecoration.copyWith(
                     labelText: 'Address',
                     hintText: selectedProtocol == 'opcua'
                         ? 'opc.tcp://127.0.0.1:4840/'
                         : '127.0.0.1:5022',
-                    prefixIcon: const Icon(Icons.lan_rounded,
-                        size: 18, color: HmiColors.textMuted),
+                    prefixIcon: Icon(Icons.lan_rounded,
+                        size: 20, color: colors.textMuted),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 Text('Protocol',
                     style: GoogleFonts.outfit(
-                        fontSize: 12, color: HmiColors.textMuted)),
-                const SizedBox(height: 8),
+                        fontSize: 14, color: colors.textMuted)),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () =>
-                            setDialogState(() => selectedProtocol = 'modbus'),
+                        onTap: () => setDialogState(
+                            () => selectedProtocol = 'modbus'),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
                             color: selectedProtocol == 'modbus'
                                 ? Colors.blue.withValues(alpha: 0.15)
                                 : Colors.white.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: selectedProtocol == 'modbus'
                                   ? Colors.blue.withValues(alpha: 0.5)
-                                  : HmiColors.surfaceBorder,
+                                  : colors.surfaceBorder,
                             ),
                           ),
                           child: Center(
                             child: Text('MODBUS',
                                 style: GoogleFonts.dmMono(
-                                  fontSize: 12,
+                                  fontSize: 15,
                                   fontWeight: FontWeight.w600,
                                   color: selectedProtocol == 'modbus'
                                       ? Colors.blue
-                                      : HmiColors.textMuted,
+                                      : colors.textMuted,
                                 )),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () =>
-                            setDialogState(() => selectedProtocol = 'opcua'),
+                        onTap: () => setDialogState(
+                            () => selectedProtocol = 'opcua'),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
                           decoration: BoxDecoration(
                             color: selectedProtocol == 'opcua'
                                 ? Colors.teal.withValues(alpha: 0.15)
                                 : Colors.white.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: selectedProtocol == 'opcua'
                                   ? Colors.teal.withValues(alpha: 0.5)
-                                  : HmiColors.surfaceBorder,
+                                  : colors.surfaceBorder,
                             ),
                           ),
                           child: Center(
                             child: Text('OPC UA',
                                 style: GoogleFonts.dmMono(
-                                  fontSize: 12,
+                                  fontSize: 15,
                                   fontWeight: FontWeight.w600,
                                   color: selectedProtocol == 'opcua'
                                       ? Colors.teal
-                                      : HmiColors.textMuted,
+                                      : colors.textMuted,
                                 )),
                           ),
                         ),
@@ -526,14 +536,18 @@ class _DeviceListScreenState extends State<DeviceListScreen>
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: Text('Cancel',
-                  style: GoogleFonts.outfit(color: HmiColors.textMuted)),
+                  style: GoogleFonts.outfit(
+                      fontSize: 16, color: colors.textMuted)),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: HmiColors.accent),
+              style: FilledButton.styleFrom(
+                  backgroundColor: colors.accent),
               onPressed: () => Navigator.pop(ctx, true),
               child: Text('Connect',
                   style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w600, color: Colors.white)),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white)),
             ),
           ],
         ),
@@ -566,10 +580,9 @@ class _DeviceListScreenState extends State<DeviceListScreen>
     }
   }
 
-  // ── Build ────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
+    final colors = ActiveTheme.of(context);
     final entries = _entries;
     final connected = entries.where((e) => e.isConnected).toList();
     final available = entries.where((e) => !e.isConnected).toList();
@@ -578,49 +591,35 @@ class _DeviceListScreenState extends State<DeviceListScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(),
-          if (_scanning) _ScanProgressBar(),
+          _buildHeader(colors),
+          if (_scanning) _ScanProgressBar(colors: colors),
           Expanded(
             child: _loading && entries.isEmpty
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(
+                    child:
+                        CircularProgressIndicator(color: colors.accent))
                 : entries.isEmpty
-                    ? _buildEmptyState()
-                    : LayoutBuilder(
-                        builder: (ctx, constraints) {
-                          final useGrid = constraints.maxWidth >= 800;
-                          final allItems = <Widget>[
-                            if (connected.isNotEmpty) ...[
-                              _SectionHeader(
-                                  label: 'CONNECTED',
-                                  count: connected.length,
-                                  color: HmiColors.healthy),
-                              if (useGrid)
-                                _DeviceGrid(
-                                  crossAxisCount: constraints.maxWidth >= 1200 ? 3 : 2,
-                                  children: connected.map((e) => _buildNetworkRow(e)).toList(),
-                                )
-                              else
-                                ...connected.map((e) => _buildNetworkRow(e)),
-                            ],
-                            if (available.isNotEmpty) ...[
-                              _SectionHeader(
-                                  label: 'AVAILABLE',
-                                  count: available.length,
-                                  color: HmiColors.textMuted),
-                              if (useGrid)
-                                _DeviceGrid(
-                                  crossAxisCount: constraints.maxWidth >= 1200 ? 3 : 2,
-                                  children: available.map((e) => _buildNetworkRow(e)).toList(),
-                                )
-                              else
-                                ...available.map((e) => _buildNetworkRow(e)),
-                            ],
-                          ];
-                          return ListView(
-                            padding: const EdgeInsets.only(bottom: 24),
-                            children: allItems,
-                          );
-                        },
+                    ? _buildEmptyState(colors)
+                    : ListView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        children: [
+                          if (connected.isNotEmpty) ...[
+                            _SectionHeader(
+                                label: 'CONNECTED',
+                                count: connected.length,
+                                color: colors.healthy),
+                            ...connected.map(
+                                (e) => _buildNetworkRow(e, colors)),
+                          ],
+                          if (available.isNotEmpty) ...[
+                            _SectionHeader(
+                                label: 'AVAILABLE',
+                                count: available.length,
+                                color: colors.textMuted),
+                            ...available.map(
+                                (e) => _buildNetworkRow(e, colors)),
+                          ],
+                        ],
                       ),
           ),
         ],
@@ -628,18 +627,26 @@ class _DeviceListScreenState extends State<DeviceListScreen>
     );
   }
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+  Widget _buildHeader(ThemeConfig colors) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(
+          bottom: BorderSide(color: colors.surfaceBorder, width: 1),
+        ),
+      ),
       child: Row(
         children: [
-          const Icon(Icons.wifi_rounded, color: HmiColors.accent, size: 28),
-          const SizedBox(width: 10),
-          Text('PLC Networks',
+          Icon(Icons.wifi_rounded, color: colors.accent, size: 28),
+          const SizedBox(width: 12),
+          Text('PLC NETWORKS',
               style: GoogleFonts.outfit(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: HmiColors.textPrimary)),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary,
+                  letterSpacing: 2)),
           const Spacer(),
           if (widget.canManage)
             _scanning
@@ -647,26 +654,26 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: RotationTransition(
                       turns: _radarCtrl,
-                      child: const Icon(Icons.radar_rounded,
-                          color: HmiColors.accent, size: 22),
+                      child: Icon(Icons.radar_rounded,
+                          color: colors.accent, size: 26),
                     ),
                   )
                 : IconButton(
-                    icon: const Icon(Icons.radar_rounded),
-                    color: HmiColors.accent,
+                    icon: Icon(Icons.radar_rounded,
+                        size: 26, color: colors.accent),
                     tooltip: 'Scan for PLCs',
                     onPressed: _scanNetwork,
                   ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            color: HmiColors.textMuted,
+            icon: Icon(Icons.refresh_rounded,
+                size: 24, color: colors.textSecondary),
             tooltip: 'Refresh',
             onPressed: () => _loadDevices(),
           ),
           if (widget.canManage)
             IconButton(
-              icon: const Icon(Icons.add_rounded),
-              color: HmiColors.textMuted,
+              icon: Icon(Icons.add_rounded,
+                  size: 24, color: colors.textSecondary),
               tooltip: 'Add manually',
               onPressed: () => _showAddDeviceDialog(),
             ),
@@ -675,7 +682,7 @@ class _DeviceListScreenState extends State<DeviceListScreen>
     );
   }
 
-  Widget _buildNetworkRow(_NetworkEntry entry) {
+  Widget _buildNetworkRow(_NetworkEntry entry, ThemeConfig colors) {
     final proto = entry.protocol.toLowerCase();
     final protoColor = proto == 'opcua' ? Colors.teal : Colors.blue;
     final isConnecting = _connectingKey == entry.address;
@@ -690,15 +697,15 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                       _devices.firstWhere((d) => d.id == entry.deviceId);
                   _showDeviceInfo(device);
                 }
-              : null, // CONNECT button handles this
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+              : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
             // Signal bars
             SizedBox(
-              width: 32,
-              height: 32,
+              width: 40,
+              height: 40,
               child: Center(
                 child: _SignalBars(
                   bars: signalBars,
@@ -706,7 +713,7 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                 ),
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
 
             // Name + address + badges
             Expanded(
@@ -719,29 +726,29 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                         child: Text(
                           entry.name,
                           style: GoogleFonts.outfit(
-                            fontSize: 15,
+                            fontSize: 20,
                             fontWeight: entry.isConnected
                                 ? FontWeight.w600
                                 : FontWeight.w400,
                             color: entry.isConnected
-                                ? HmiColors.textPrimary
-                                : HmiColors.textSecondary,
+                                ? colors.textPrimary
+                                : colors.textSecondary,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (entry.isConnected) ...[
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         Container(
-                          width: 7,
-                          height: 7,
+                          width: 9,
+                          height: 9,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: HmiColors.healthy,
+                            color: colors.healthy,
                             boxShadow: [
                               BoxShadow(
-                                color: HmiColors.healthy.withValues(alpha: 0.6),
-                                blurRadius: 5,
+                                color: colors.healthy.withValues(alpha: 0.6),
+                                blurRadius: 6,
                               ),
                             ],
                           ),
@@ -749,35 +756,37 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                       ],
                     ],
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
                       Flexible(
                         child: Text(
                           entry.address,
                           style: GoogleFonts.jetBrainsMono(
-                            fontSize: 11,
-                            color: HmiColors.textMuted,
+                            fontSize: 14,
+                            color: colors.textMuted,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      _ProtocolBadge(protocol: entry.protocol),
+                      const SizedBox(width: 8),
+                      _ProtocolBadge(
+                          protocol: entry.protocol, colors: colors),
                       if (!entry.isRegistered) ...[
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1),
+                              horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.amber.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(6),
                             border: Border.all(
-                                color: Colors.amber.withValues(alpha: 0.4)),
+                                color:
+                                    Colors.amber.withValues(alpha: 0.4)),
                           ),
                           child: Text('NEW',
                               style: GoogleFonts.dmMono(
-                                  fontSize: 9,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                   color: Colors.amber,
                                   letterSpacing: 0.5)),
@@ -788,16 +797,16 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
 
             // Right-side action
             if (isConnecting)
               SizedBox(
-                width: 80,
+                width: 100,
                 child: Center(
                   child: SizedBox(
-                    width: 20,
-                    height: 20,
+                    width: 24,
+                    height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
                       color: protoColor,
@@ -806,25 +815,27 @@ class _DeviceListScreenState extends State<DeviceListScreen>
                 ),
               )
             else if (entry.isConnected)
-              const Icon(Icons.info_outline_rounded,
-                  size: 20, color: HmiColors.textMuted)
+              Icon(Icons.info_outline_rounded,
+                  size: 24, color: colors.textMuted)
             else
               SizedBox(
-                height: 34,
+                height: 42,
                 child: FilledButton(
                   onPressed: () => _connectEntry(entry),
                   style: FilledButton.styleFrom(
-                    backgroundColor: HmiColors.accent.withValues(alpha: 0.15),
-                    foregroundColor: HmiColors.accent,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    backgroundColor:
+                        colors.accent.withValues(alpha: 0.15),
+                    foregroundColor: colors.accent,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
+                        borderRadius: BorderRadius.circular(10)),
                     elevation: 0,
                   ),
                   child: Text(
                     'CONNECT',
                     style: GoogleFonts.dmMono(
-                      fontSize: 11,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.5,
                     ),
@@ -837,36 +848,38 @@ class _DeviceListScreenState extends State<DeviceListScreen>
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(ThemeConfig colors) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.wifi_off_rounded, size: 72, color: Colors.white12),
-          const SizedBox(height: 16),
+          Icon(Icons.wifi_off_rounded,
+              size: 80, color: colors.textMuted),
+          const SizedBox(height: 20),
           Text('No PLCs found',
               style: GoogleFonts.outfit(
-                  fontSize: 18,
+                  fontSize: 24,
                   fontWeight: FontWeight.w600,
-                  color: HmiColors.textMuted)),
-          const SizedBox(height: 8),
+                  color: colors.textMuted)),
+          const SizedBox(height: 10),
           Text('Tap scan to search the network',
               style: GoogleFonts.outfit(
-                  fontSize: 13, color: HmiColors.textMuted)),
-          const SizedBox(height: 24),
+                  fontSize: 16, color: colors.textMuted)),
+          const SizedBox(height: 28),
           if (widget.canManage)
             FilledButton.icon(
               onPressed: _scanNetwork,
               style: FilledButton.styleFrom(
-                backgroundColor: HmiColors.accent,
+                backgroundColor: colors.accent,
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 24, vertical: 14),
+                    horizontal: 28, vertical: 16),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
-              icon: const Icon(Icons.radar_rounded, size: 18),
+              icon: const Icon(Icons.radar_rounded, size: 22),
               label: Text('Scan Network',
-                  style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                  style: GoogleFonts.outfit(
+                      fontSize: 18, fontWeight: FontWeight.w600)),
             ),
         ],
       ),
@@ -887,33 +900,33 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 6),
       child: Row(
         children: [
           Text(
             label,
             style: GoogleFonts.dmMono(
-              fontSize: 11,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
               color: color,
-              letterSpacing: 1.2,
+              letterSpacing: 1.5,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Container(
             padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text('$count',
                 style: GoogleFonts.dmMono(
-                    fontSize: 10,
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: color)),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
               child: Divider(
                   color: color.withValues(alpha: 0.2), thickness: 1)),
@@ -926,22 +939,25 @@ class _SectionHeader extends StatelessWidget {
 // ── Scanning progress bar ──────────────────────────────────────────────────
 
 class _ScanProgressBar extends StatelessWidget {
+  final ThemeConfig colors;
+  const _ScanProgressBar({required this.colors});
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const LinearProgressIndicator(
+        LinearProgressIndicator(
           backgroundColor: Colors.transparent,
-          valueColor: AlwaysStoppedAnimation<Color>(HmiColors.accent),
+          valueColor: AlwaysStoppedAnimation<Color>(colors.accent),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
           child: Text(
             'Scanning network for PLCs…',
             style: GoogleFonts.dmMono(
-                fontSize: 10,
-                color: HmiColors.textMuted,
+                fontSize: 13,
+                color: colors.textMuted,
                 letterSpacing: 0.5),
           ),
         ),
@@ -950,39 +966,10 @@ class _ScanProgressBar extends StatelessWidget {
   }
 }
 
-// ── Desktop multi-column device grid ───────────────────────────────────────
-
-class _DeviceGrid extends StatelessWidget {
-  final List<Widget> children;
-  final int crossAxisCount;
-  const _DeviceGrid({required this.children, required this.crossAxisCount});
-
-  @override
-  Widget build(BuildContext context) {
-    final rows = <Widget>[];
-    for (var i = 0; i < children.length; i += crossAxisCount) {
-      final rowChildren = <Widget>[];
-      for (var j = 0; j < crossAxisCount; j++) {
-        if (i + j < children.length) {
-          rowChildren.add(Expanded(child: children[i + j]));
-        } else {
-          rowChildren.add(const Expanded(child: SizedBox()));
-        }
-        if (j < crossAxisCount - 1) rowChildren.add(const SizedBox(width: 8));
-      }
-      rows.add(Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: rowChildren,
-      ));
-    }
-    return Column(children: rows);
-  }
-}
-
 // ── Signal bars (like cell/WiFi strength indicator) ────────────────────────
 
 class _SignalBars extends StatelessWidget {
-  final int bars; // 1 – 4
+  final int bars;
   final Color color;
 
   const _SignalBars({required this.bars, required this.color});
@@ -995,13 +982,13 @@ class _SignalBars extends StatelessWidget {
       children: List.generate(4, (i) {
         final filled = i < bars;
         return Container(
-          width: 4,
-          height: 6.0 + i * 3.5,
-          margin: const EdgeInsets.only(right: 2),
+          width: 5,
+          height: 8.0 + i * 5.0,
+          margin: const EdgeInsets.only(right: 3),
           decoration: BoxDecoration(
             color: filled ? color : color.withValues(alpha: 0.18),
             borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(1.5)),
+                const BorderRadius.vertical(top: Radius.circular(2)),
           ),
         );
       }),
@@ -1014,8 +1001,10 @@ class _SignalBars extends StatelessWidget {
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
+  final ThemeConfig colors;
 
-  const _InfoRow({required this.label, required this.value});
+  const _InfoRow(
+      {required this.label, required this.value, required this.colors});
 
   @override
   Widget build(BuildContext context) {
@@ -1023,18 +1012,18 @@ class _InfoRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 90,
+          width: 100,
           child: Text(label,
               style: GoogleFonts.dmMono(
-                  fontSize: 10,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: HmiColors.textMuted,
+                  color: colors.textMuted,
                   letterSpacing: 1)),
         ),
         Expanded(
           child: Text(value,
               style: GoogleFonts.dmMono(
-                  fontSize: 12, color: HmiColors.textPrimary)),
+                  fontSize: 16, color: colors.textPrimary)),
         ),
       ],
     );
@@ -1045,8 +1034,9 @@ class _InfoRow extends StatelessWidget {
 
 class _ProtocolBadge extends StatelessWidget {
   final String protocol;
+  final ThemeConfig colors;
 
-  const _ProtocolBadge({required this.protocol});
+  const _ProtocolBadge({required this.protocol, required this.colors});
 
   @override
   Widget build(BuildContext context) {
@@ -1055,20 +1045,20 @@ class _ProtocolBadge extends StatelessWidget {
     final label = isOpcua ? 'OPC UA' : protocol.toUpperCase();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
-      child: Text(label,
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            color: color,
-            letterSpacing: 0.5,
-            fontFamily: 'DM Mono',
-          )),
+      child: Text(
+        label,
+        style: GoogleFonts.dmMono(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
     );
   }
 }

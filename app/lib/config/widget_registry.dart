@@ -46,9 +46,9 @@ class WidgetRegistry {
       if (reg == null) return const SizedBox.shrink();
 
       return ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 140, maxWidth: 220),
+        constraints: const BoxConstraints(minWidth: 140, maxWidth: 260),
         child: SizedBox(
-          height: 80,
+          height: 110,
           child: StatCard(
             label: reg.label,
             value: _liveValue(reg),

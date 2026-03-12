@@ -43,11 +43,11 @@ class LiveLineChart extends StatelessWidget {
     }
 
     final chart = Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: HmiColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: HmiColors.surfaceBorder),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HmiColors.surfaceBorder, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,21 +55,22 @@ class LiveLineChart extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 8,
-                height: 8,
+                width: 12,
+                height: 12,
                 decoration: BoxDecoration(
                   color: lineColor,
                   shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  title,
+                  title.toUpperCase(),
                   style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: HmiColors.textSecondary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white70,
+                    letterSpacing: 1.2,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -79,13 +80,14 @@ class LiveLineChart extends StatelessWidget {
                 Text(
                   '${values.last.toStringAsFixed(1)} $unit',
                   style: GoogleFonts.dmMono(
-                    fontSize: 13,
-                    color: HmiColors.textMuted,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w500,
+                    color: lineColor,
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Expanded(
             child: LineChart(
               LineChartData(
@@ -98,7 +100,34 @@ class LiveLineChart extends StatelessWidget {
                     strokeWidth: 0.5,
                   ),
                 ),
-                titlesData: const FlTitlesData(show: false),
+                titlesData: FlTitlesData(
+                  show: true,
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 60,
+                      interval: (maxY - minY) / 4,
+                      getTitlesWidget: (value, meta) {
+                        if (value == meta.max || value == meta.min) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Text(
+                            value.toStringAsFixed(value.abs() < 10 ? 1 : 0),
+                            style: GoogleFonts.dmMono(
+                              fontSize: 14,
+                              color: HmiColors.textMuted,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
                 borderData: FlBorderData(show: false),
                 minX: 0,
                 maxX: spots.isEmpty ? 50 : (spots.length - 1).toDouble(),
@@ -111,7 +140,7 @@ class LiveLineChart extends StatelessWidget {
                         .map((s) => LineTooltipItem(
                               s.y.toStringAsFixed(1),
                               GoogleFonts.dmMono(
-                                fontSize: 12,
+                                fontSize: 16,
                                 color: lineColor,
                               ),
                             ))

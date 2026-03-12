@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../config/dashboard_config.dart';
+import '../config/hmi_theme_engine.dart';
 import '../stores/dashboard_store.dart';
-import '../theme/hmi_colors.dart';
 import '../widgets/gauge_widget.dart';
 import '../widgets/line_chart_widget.dart';
 
-/// Detailed view for a PLC device — shows all registers with gauges & charts.
-/// Includes a device switcher so the user can flip between PLCs.
+/// Redesigned PLC Detail — big gauges (3×2 grid), 2-col write controls,
+/// horizontal charts strip. Everything scaled for 2K factory displays.
 class PlcDetailScreen extends StatelessWidget {
   final DashboardStore store;
 
@@ -16,8 +17,10 @@ class PlcDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ActiveTheme.of(context);
+
     return Scaffold(
-      backgroundColor: HmiColors.void_,
+      backgroundColor: colors.background,
       body: Observer(
         builder: (_) {
           final devices = store.devices;
@@ -26,129 +29,14 @@ class PlcDetailScreen extends StatelessWidget {
 
           return Column(
             children: [
-              // ── Device Selector Header ──
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: HmiColors.surface,
-                  border: Border(
-                    bottom:
-                        BorderSide(color: HmiColors.surfaceBorder, width: 1),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.precision_manufacturing_rounded,
-                            size: 20, color: HmiColors.accent),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            activeDevice?.name ?? activeId,
-                            style: GoogleFonts.outfit(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: HmiColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        if (activeDevice != null)
-                          _connectionBadge(activeDevice.isConnected),
-                      ],
-                    ),
-                    if (devices.length > 1) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 34,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: devices.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(width: 8),
-                          itemBuilder: (ctx, i) {
-                            final dev = devices[i];
-                            final isActive = dev.id == activeId;
-                            return _deviceTab(
-                              dev.name,
-                              dev.protocol.toUpperCase(),
-                              isActive,
-                              dev.isConnected,
-                              () => store.switchDevice(dev.id),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+              // ── Compact Device Header ──
+              _buildDeviceHeader(colors, devices, activeId, activeDevice),
 
-              // ── Main Content (responsive) ──
+              // ── Main Content ──
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final isDesktop = constraints.maxWidth >= 900;
-                    if (isDesktop) {
-                      // Side-by-side: Gauges+Controls | Charts
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Left column
-                          Expanded(
-                            flex: 5,
-                            child: ListView(
-                              padding: const EdgeInsets.all(16),
-                              children: [
-                                _sectionHeader('Live Gauges'),
-                                const SizedBox(height: 12),
-                                _buildGauges(),
-                                const SizedBox(height: 24),
-                                _sectionHeader('Write Controls'),
-                                const SizedBox(height: 8),
-                                _buildWriteControls(),
-                                const SizedBox(height: 32),
-                              ],
-                            ),
-                          ),
-                          const VerticalDivider(width: 1, color: Color(0xFF2A2A32)),
-                          // Right column — charts
-                          Expanded(
-                            flex: 4,
-                            child: ListView(
-                              padding: const EdgeInsets.all(16),
-                              children: [
-                                _sectionHeader('Register Trends'),
-                                const SizedBox(height: 8),
-                                ..._buildCharts(),
-                                const SizedBox(height: 32),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-                    }
-                    // Mobile / tablet — single column
-                    return ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        _sectionHeader('Live Gauges'),
-                        const SizedBox(height: 12),
-                        _buildGauges(),
-                        const SizedBox(height: 24),
-                        _sectionHeader('Write Controls'),
-                        const SizedBox(height: 8),
-                        _buildWriteControls(),
-                        const SizedBox(height: 24),
-                        _sectionHeader('Register Trends'),
-                        const SizedBox(height: 8),
-                        ..._buildCharts(),
-                        const SizedBox(height: 32),
-                      ],
-                    );
+                    return _hmiLayout(context, constraints, colors);
                   },
                 ),
               ),
@@ -159,36 +47,79 @@ class PlcDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _connectionBadge(bool connected) {
+  // ── Device Header ──────────────────────────────────────────────────
+
+  Widget _buildDeviceHeader(
+    ThemeConfig colors,
+    List<dynamic> devices,
+    String activeId,
+    dynamic activeDevice,
+  ) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
-        color: (connected ? HmiColors.healthy : HmiColors.danger)
-            .withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: (connected ? HmiColors.healthy : HmiColors.danger)
-              .withValues(alpha: 0.4),
+        color: colors.surface,
+        border: Border(
+          bottom: BorderSide(color: colors.surfaceBorder, width: 1),
         ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.precision_manufacturing_rounded,
+              size: 28, color: colors.accent),
+          const SizedBox(width: 12),
+          Text(
+            activeDevice?.name ?? activeId,
+            style: GoogleFonts.outfit(
+              fontSize: 28,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 16),
+          if (activeDevice != null)
+            _connectionBadge(colors, activeDevice.isConnected),
+          const Spacer(),
+          if (devices.length > 1)
+            ...devices.map((dev) {
+              final isActive = dev.id == activeId;
+              return Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: _deviceChip(
+                    colors, dev.name, dev.protocol.toUpperCase(), isActive,
+                    dev.isConnected, () => store.switchDevice(dev.id)),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _connectionBadge(ThemeConfig colors, bool connected) {
+    final c = connected ? colors.healthy : colors.danger;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: c.withValues(alpha: 0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: connected ? HmiColors.healthy : HmiColors.danger,
-            ),
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: c),
           ),
-          const SizedBox(width: 5),
+          const SizedBox(width: 6),
           Text(
             connected ? 'ONLINE' : 'OFFLINE',
             style: GoogleFonts.dmMono(
-              fontSize: 10,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: connected ? HmiColors.healthy : HmiColors.danger,
+              color: c,
             ),
           ),
         ],
@@ -196,25 +127,20 @@ class PlcDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _deviceTab(
-    String name,
-    String protocol,
-    bool isActive,
-    bool isConnected,
-    VoidCallback onTap,
-  ) {
+  Widget _deviceChip(ThemeConfig colors, String name, String protocol,
+      bool isActive, bool isConnected, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isActive
-              ? HmiColors.accent.withValues(alpha: 0.15)
+              ? colors.accent.withValues(alpha: 0.15)
               : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isActive
-                ? HmiColors.accent.withValues(alpha: 0.5)
+                ? colors.accent.withValues(alpha: 0.5)
                 : Colors.white.withValues(alpha: 0.1),
           ),
         ),
@@ -222,29 +148,29 @@ class PlcDetailScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 6,
-              height: 6,
+              width: 8,
+              height: 8,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isConnected ? HmiColors.healthy : HmiColors.danger,
+                color: isConnected ? colors.healthy : colors.danger,
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Text(
               name,
               style: GoogleFonts.outfit(
-                fontSize: 12,
+                fontSize: 18,
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                color: isActive ? HmiColors.accent : HmiColors.textSecondary,
+                color: isActive ? colors.accent : Colors.white70,
               ),
             ),
             const SizedBox(width: 6),
             Text(
               protocol,
               style: GoogleFonts.dmMono(
-                fontSize: 9,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: HmiColors.textMuted,
+                color: Colors.white54,
               ),
             ),
           ],
@@ -253,54 +179,106 @@ class PlcDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildWriteControls() {
-    final writable = store.config.registers
-        .where((r) => r.writable)
-        .toList();
-    if (writable.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: HmiColors.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: HmiColors.surfaceBorder),
-        ),
-        child: Text(
-          'No writable registers on this device',
-          style: GoogleFonts.outfit(fontSize: 13, color: HmiColors.textMuted),
-        ),
+  // ── Main Layout (2-column) ─────────────────────────────────────────
+
+  Widget _hmiLayout(
+      BuildContext context, BoxConstraints constraints, ThemeConfig colors) {
+    final w = constraints.maxWidth;
+
+    // On small screens, fall back to scrollable single column
+    if (w < 900) {
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          _sectionLabel(colors, 'LIVE REGISTERS'),
+          const SizedBox(height: 16),
+          _buildGaugeGrid(colors, constraints),
+          const SizedBox(height: 28),
+          _sectionLabel(colors, 'WRITE CONTROLS'),
+          const SizedBox(height: 12),
+          _buildWriteGrid(colors),
+          const SizedBox(height: 28),
+          _sectionLabel(colors, 'REGISTER TRENDS'),
+          const SizedBox(height: 12),
+          ..._buildChartList(colors),
+        ],
       );
     }
-    return Column(
-      children: writable.map((reg) {
-        final current = store.liveValues[reg.address] ?? 0;
-        final display = reg.divisor != 1
-            ? (current / reg.divisor).toStringAsFixed(1)
-            : current.toInt().toString();
-        return _WriteRegisterTile(
-          label: reg.label,
-          unit: reg.unit,
-          address: reg.address,
-          currentDisplay: display,
-          isWriting: store.isWriting,
-          onWrite: (value) => store.writeRegister(register: reg.address, value: value),
-        );
-      }).toList(),
+
+    // Desktop: left (gauges + controls) | right (charts)
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Left: Gauges + Write Controls ──
+        Expanded(
+          flex: 6,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Gauge grid
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 16, 0),
+                child: _sectionLabel(colors, 'LIVE REGISTERS'),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 12, 16, 0),
+                  child: _buildGaugeGrid(colors, constraints),
+                ),
+              ),
+              // Write controls
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 16, 0),
+                child: _sectionLabel(colors, 'WRITE CONTROLS'),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 12, 16, 16),
+                child: _buildWriteGrid(colors),
+              ),
+            ],
+          ),
+        ),
+        VerticalDivider(width: 1, color: colors.surfaceBorder),
+        // ── Right: Charts ──
+        Expanded(
+          flex: 4,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: _sectionLabel(colors, 'REGISTER TRENDS'),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  children: _buildChartList(colors),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _sectionHeader(String title) {
+  // ── Section Label ──────────────────────────────────────────────────
+
+  Widget _sectionLabel(ThemeConfig colors, String title) {
     return Text(
       title,
       style: GoogleFonts.outfit(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: HmiColors.textSecondary,
+        fontSize: 24,
+        fontWeight: FontWeight.w700,
+        color: Colors.white70,
+        letterSpacing: 2,
       ),
     );
   }
 
-  Widget _buildGauges() {
+  // ── Gauge Grid (3×2 on desktop, fills available space) ─────────────
+
+  Widget _buildGaugeGrid(ThemeConfig colors, BoxConstraints constraints) {
     final gaugeConfigs = [
       ('temperature', () => store.temperature, 0.0, 120.0, 80.0, 100.0),
       ('pressure', () => store.pressure, 800.0, 1600.0, 1100.0, 1300.0),
@@ -311,20 +289,30 @@ class PlcDetailScreen extends StatelessWidget {
     ];
 
     return LayoutBuilder(
-      builder: (context, constraints) {
-        final perRow = constraints.maxWidth >= 900 ? 6
-            : constraints.maxWidth >= 600 ? 4
-            : constraints.maxWidth < 400 ? 2
-            : 3;
-        final gaugeSize = constraints.maxWidth >= 900 ? 140.0
-            : constraints.maxWidth >= 600 ? 130.0
-            : constraints.maxWidth < 400 ? 110.0
-            : 130.0;
+      builder: (context, gaugeConstraints) {
+        final w = gaugeConstraints.maxWidth;
+        final h = gaugeConstraints.maxHeight;
 
-        final rows = <Widget>[];
+        // On desktop: 3 per row, 2 rows
+        // On smaller screens: 2 per row, 3 rows
+        final perRow = w >= 600 ? 3 : 2;
+        final rows = (gaugeConfigs.length / perRow).ceil();
+
+        // Calculate max gauge size to fill available space
+        final hGap = 16.0;
+        final vGap = 12.0;
+        final maxGaugeW =
+            (w - (perRow - 1) * hGap) / perRow;
+        final maxGaugeH = h > 0
+            ? (h - (rows - 1) * vGap - rows * 44) / rows // 44 for label below gauge
+            : 240.0;
+        final gaugeSize = (maxGaugeW < maxGaugeH ? maxGaugeW : maxGaugeH)
+            .clamp(100.0, 280.0);
+
+        final rowWidgets = <Widget>[];
         for (var i = 0; i < gaugeConfigs.length; i += perRow) {
           final rowItems = gaugeConfigs.skip(i).take(perRow).toList();
-          rows.add(
+          rowWidgets.add(
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: rowItems.map((g) {
@@ -344,15 +332,84 @@ class PlcDetailScreen extends StatelessWidget {
             ),
           );
           if (i + perRow < gaugeConfigs.length) {
-            rows.add(const SizedBox(height: 16));
+            rowWidgets.add(SizedBox(height: vGap));
           }
         }
-        return Column(children: rows);
+
+        return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: rowWidgets,
+        );
       },
     );
   }
 
-  List<Widget> _buildCharts() {
+  // ── Write Controls (2-column grid) ─────────────────────────────────
+
+  Widget _buildWriteGrid(ThemeConfig colors) {
+    final writable =
+        store.config.registers.where((r) => r.writable).toList();
+    if (writable.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.surfaceBorder),
+        ),
+        child: Text(
+          'No writable registers on this device',
+          style: GoogleFonts.outfit(fontSize: 20, color: Colors.white54),
+        ),
+      );
+    }
+
+    // 2-column grid of write tiles
+    final rows = <Widget>[];
+    for (var i = 0; i < writable.length; i += 2) {
+      final left = writable[i];
+      final right = i + 1 < writable.length ? writable[i + 1] : null;
+      rows.add(
+        Row(
+          children: [
+            Expanded(child: _buildWriteTile(colors, left)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: right != null
+                  ? _buildWriteTile(colors, right)
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      );
+      if (i + 2 < writable.length) {
+        rows.add(const SizedBox(height: 12));
+      }
+    }
+    return Column(children: rows);
+  }
+
+  Widget _buildWriteTile(ThemeConfig colors, dynamic reg) {
+    final current = store.liveValues[reg.address] ?? 0;
+    final display = reg.divisor != 1
+        ? (current / reg.divisor).toStringAsFixed(1)
+        : current.toInt().toString();
+
+    return _WriteRegisterTile(
+      label: reg.label,
+      unit: reg.unit,
+      address: reg.address,
+      currentDisplay: display,
+      color: reg.color,
+      isWriting: store.isWriting,
+      onWrite: (value) =>
+          store.writeRegister(register: reg.address, value: value),
+    );
+  }
+
+  // ── Charts (stacked list, filling right column) ────────────────────
+
+  List<Widget> _buildChartList(ThemeConfig colors) {
     final chartKeys = [
       'temperature',
       'pressure',
@@ -365,7 +422,7 @@ class PlcDetailScreen extends StatelessWidget {
       if (reg == null) return const SizedBox.shrink();
       final history = store.registerHistory[reg.address]?.toList() ?? [];
       return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: 16),
         child: LiveLineChart(
           title: '${reg.label} (${reg.unit})',
           values: history.map((d) {
@@ -374,20 +431,21 @@ class PlcDetailScreen extends StatelessWidget {
           }).toList(),
           unit: reg.unit,
           lineColor: reg.color,
-          height: 160,
+          height: 200,
         ),
       );
     }).toList();
   }
 }
 
-// ── Inline Write Control ─────────────────────────────────────────────
+// ── Write Register Tile (big, card-style) ────────────────────────────
 
 class _WriteRegisterTile extends StatefulWidget {
   final String label;
   final String unit;
   final int address;
   final String currentDisplay;
+  final Color color;
   final bool isWriting;
   final Future<void> Function(int value) onWrite;
 
@@ -396,6 +454,7 @@ class _WriteRegisterTile extends StatefulWidget {
     required this.unit,
     required this.address,
     required this.currentDisplay,
+    required this.color,
     required this.isWriting,
     required this.onWrite,
   });
@@ -427,99 +486,130 @@ class _WriteRegisterTileState extends State<_WriteRegisterTile> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ActiveTheme.of(context);
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: HmiColors.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: HmiColors.surfaceBorder),
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.surfaceBorder),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.label,
+          // Label + register address (single row)
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.label.toUpperCase(),
                   style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: HmiColors.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 1,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(
+                'REG ${widget.address}',
+                style: GoogleFonts.dmMono(
+                  fontSize: 13,
+                  color: Colors.white54,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Value + Input + Write in one row
+          Row(
+            children: [
+              Text(
+                widget.currentDisplay,
+                style: GoogleFonts.dmMono(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w600,
+                  color: widget.color,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                widget.unit,
+                style: GoogleFonts.outfit(
+                  fontSize: 15,
+                  color: Colors.white70,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SizedBox(
+                  height: 40,
+                  child: TextField(
+                    controller: _ctrl,
+                    keyboardType: TextInputType.number,
+                    style: GoogleFonts.dmMono(
+                      fontSize: 18,
+                      color: Colors.white,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      hintText: 'Value',
+                      hintStyle: GoogleFonts.dmMono(
+                        fontSize: 14,
+                        color: Colors.white38,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: colors.surfaceBorder),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: colors.surfaceBorder),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide:
+                            BorderSide(color: colors.accent, width: 1.5),
+                      ),
+                    ),
+                    onSubmitted: (_) => _submit(),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Reg ${widget.address}  ·  NOW: ${widget.currentDisplay} ${widget.unit}',
-                  style: GoogleFonts.dmMono(
-                    fontSize: 10,
-                    color: HmiColors.textMuted,
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 40,
+                child: FilledButton(
+                  onPressed: _busy || widget.isWriting ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colors.accent,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 80,
-            height: 34,
-            child: TextField(
-              controller: _ctrl,
-              keyboardType: TextInputType.number,
-              style: GoogleFonts.dmMono(
-                fontSize: 13,
-                color: HmiColors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                hintText: 'value',
-                hintStyle: GoogleFonts.dmMono(
-                  fontSize: 11,
-                  color: HmiColors.textMuted,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: BorderSide(color: HmiColors.surfaceBorder),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: BorderSide(color: HmiColors.surfaceBorder),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide:
-                      const BorderSide(color: HmiColors.accent, width: 1.5),
+                  child: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : Text(
+                          'WRITE',
+                          style: GoogleFonts.dmMono(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                 ),
               ),
-              onSubmitted: (_) => _submit(),
-            ),
-          ),
-          const SizedBox(width: 6),
-          SizedBox(
-            height: 34,
-            child: FilledButton(
-              onPressed: _busy || widget.isWriting ? null : _submit,
-              style: FilledButton.styleFrom(
-                backgroundColor: HmiColors.accent,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-              child: _busy
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text('WRITE',
-                      style: GoogleFonts.dmMono(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      )),
-            ),
+            ],
           ),
         ],
       ),

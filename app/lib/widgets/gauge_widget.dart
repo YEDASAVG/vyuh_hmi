@@ -33,7 +33,7 @@ class GaugeWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: size,
-      height: size + 28, // Extra space for label below.
+      height: size + 44, // Extra space for label below.
       child: Column(
         children: [
           SizedBox(
@@ -54,7 +54,7 @@ class GaugeWidget extends StatelessWidget {
                     Text(
                       value.toStringAsFixed(value < 10 ? 1 : 0),
                       style: GoogleFonts.dmMono(
-                        fontSize: size * 0.22,
+                        fontSize: size * 0.32,
                         fontWeight: FontWeight.w500,
                         color: _valueColor,
                       ),
@@ -62,9 +62,9 @@ class GaugeWidget extends StatelessWidget {
                     Text(
                       unit,
                       style: GoogleFonts.outfit(
-                        fontSize: size * 0.09,
-                        fontWeight: FontWeight.w400,
-                        color: HmiColors.textSecondary,
+                        fontSize: size * 0.15,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white70,
                       ),
                     ),
                   ],
@@ -74,11 +74,12 @@ class GaugeWidget extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            label,
+            label.toUpperCase(),
             style: GoogleFonts.outfit(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: HmiColors.textSecondary,
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
+              color: Colors.white70,
+              letterSpacing: 1.5,
             ),
             textAlign: TextAlign.center,
           ),
@@ -172,13 +173,13 @@ class _GaugePainter extends CustomPainter {
     );
 
     // ── Tick marks at min & max ───────────────────────────────────
-    _drawTick(canvas, center, radius + 6, _startAngle, size);
-    _drawTick(canvas, center, radius + 6, _startAngle + _sweepTotal, size);
+    _drawTick(canvas, center, radius + 8, _startAngle, size);
+    _drawTick(canvas, center, radius + 8, _startAngle + _sweepTotal, size);
 
     // ── Min/Max labels ────────────────────────────────────────────
-    _drawLabel(canvas, center, radius + 16, _startAngle, min.toInt().toString(),
+    _drawLabel(canvas, center, radius + 24, _startAngle, min.toInt().toString(),
         size);
-    _drawLabel(canvas, center, radius + 16, _startAngle + _sweepTotal,
+    _drawLabel(canvas, center, radius + 24, _startAngle + _sweepTotal,
         max.toInt().toString(), size);
   }
 
@@ -219,7 +220,7 @@ class _GaugePainter extends CustomPainter {
         text: text,
         style: TextStyle(
           fontSize: size.width * 0.07,
-          color: HmiColors.textMuted,
+          color: Colors.white54,
           fontFamily: 'DM Mono',
         ),
       ),

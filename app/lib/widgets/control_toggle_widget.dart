@@ -242,35 +242,37 @@ class EmergencyStopButton extends StatelessWidget {
         onTap: isLoading ? null : () => _confirmStop(context),
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
           decoration: BoxDecoration(
             color: HmiColors.danger.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: HmiColors.danger.withValues(alpha: 0.5), width: 1.5),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: HmiColors.danger.withValues(alpha: 0.5), width: 2),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (isLoading)
                 const SizedBox(
-                  width: 20,
-                  height: 20,
+                  width: 36,
+                  height: 36,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2,
+                    strokeWidth: 3,
                     color: HmiColors.danger,
                   ),
                 )
               else
-                const Icon(Icons.dangerous_rounded, color: HmiColors.danger, size: 20),
-              const SizedBox(width: 8),
+                const Icon(Icons.dangerous_rounded, color: HmiColors.danger, size: 56),
+              const SizedBox(height: 12),
               const Text(
-                'EMERGENCY STOP',
+                'EMERGENCY\nSTOP',
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: HmiColors.danger,
-                  fontSize: 13,
+                  fontSize: 28,
                   fontWeight: FontWeight.w700,
                   fontFamily: 'DM Mono',
-                  letterSpacing: 1.5,
+                  letterSpacing: 2,
+                  height: 1.3,
                 ),
               ),
             ],
@@ -367,7 +369,7 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: HmiColors.surface,
         borderRadius: BorderRadius.circular(12),
@@ -380,26 +382,25 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
           // Header
           Row(
             children: [
-              const Icon(Icons.speed_rounded, color: HmiColors.warning, size: 18),
-              const SizedBox(width: 8),
+              const Icon(Icons.speed_rounded, color: HmiColors.warning, size: 28),
+              const SizedBox(width: 10),
               const Expanded(
                 child: Text(
                   'Agitator Speed',
                   style: TextStyle(
-                    color: HmiColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
               if (widget.isOverridden)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: HmiColors.warningDim,
                     borderRadius: BorderRadius.circular(4),
@@ -408,7 +409,7 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
                     'OVERRIDE',
                     style: TextStyle(
                       color: HmiColors.warning,
-                      fontSize: 9,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                       fontFamily: 'DM Mono',
                       letterSpacing: 1,
@@ -422,13 +423,13 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
           Text(
             '${widget.currentRpm.toInt()} RPM',
             style: const TextStyle(
-              color: HmiColors.textPrimary,
-              fontSize: 24,
+              color: Colors.white,
+              fontSize: 44,
               fontWeight: FontWeight.w700,
               fontFamily: 'DM Mono',
             ),
           ),
-          const SizedBox(height: 12),
+          const Spacer(),
           // Slider
           SliderTheme(
             data: SliderThemeData(
@@ -436,8 +437,8 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
               inactiveTrackColor: HmiColors.surfaceBorder,
               thumbColor: HmiColors.warning,
               overlayColor: HmiColors.warning.withValues(alpha: 0.2),
-              trackHeight: 4,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+              trackHeight: 8,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 14),
             ),
             child: Slider(
               value: _sliderValue,
@@ -453,7 +454,7 @@ class _AgitatorSliderWidgetState extends State<AgitatorSliderWidget> {
               }),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           // Action buttons
           Row(
             children: [
@@ -526,7 +527,7 @@ class _ActionButton extends StatelessWidget {
                     label,
                     style: TextStyle(
                       color: color,
-                      fontSize: 11,
+                      fontSize: 18,
                       fontWeight: FontWeight.w700,
                       fontFamily: 'DM Mono',
                       letterSpacing: 1,

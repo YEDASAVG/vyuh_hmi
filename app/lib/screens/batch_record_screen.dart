@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -6,12 +8,9 @@ import '../config/dashboard_config.dart';
 import '../config/hmi_theme_engine.dart';
 import '../services/api_service.dart';
 
-/// ISA-88 Batch Record screen.
-///
-/// Features:
-/// - List of batch records with status, operator, recipe
-/// - Tap to expand → shows batch steps timeline
-/// - Filter by status (Running, Completed, Aborted, Held)
+/// ISA-88 Batch Record screen — 3-column Kanban board for 2K factory displays.
+/// Shows Running / Held / Completed batches side-by-side so parallel operations
+/// are visible at a glance.
 class BatchRecordScreen extends StatefulWidget {
   final ApiService api;
 
@@ -22,26 +21,34 @@ class BatchRecordScreen extends StatefulWidget {
 }
 
 class _BatchRecordScreenState extends State<BatchRecordScreen> {
-  List<Map<String, dynamic>> _batches = [];
+  List<Map<String, dynamic>> _allBatches = [];
   bool _isLoading = true;
-  String? _statusFilter;
+  Timer? _autoRefresh;
+
+  // Expanded card state — track per batch
   String? _expandedBatchId;
   Map<String, dynamic>? _expandedDetail;
-
-  static const _statusFilters = <String?>[null, 'running', 'completed', 'aborted', 'held'];
 
   @override
   void initState() {
     super.initState();
     _load();
+    _autoRefresh = Timer.periodic(
+        const Duration(seconds: 10), (_) => _load(silent: true));
   }
 
-  Future<void> _load() async {
-    setState(() => _isLoading = true);
-    final batches = await widget.api.getBatches(status: _statusFilter);
+  @override
+  void dispose() {
+    _autoRefresh?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
+    final batches = await widget.api.getBatches(limit: 200);
     if (mounted) {
       setState(() {
-        _batches = batches;
+        _allBatches = batches;
         _isLoading = false;
       });
     }
@@ -64,138 +71,227 @@ class _BatchRecordScreenState extends State<BatchRecordScreen> {
     }
   }
 
+  // ---- Column definitions ----
+  static const _columns = <_BoardColumn>[
+    _BoardColumn(
+      title: 'RUNNING',
+      icon: Icons.play_circle_rounded,
+      statuses: ['running'],
+      color: Colors.blue,
+    ),
+    _BoardColumn(
+      title: 'HELD',
+      icon: Icons.pause_circle_rounded,
+      statuses: ['held'],
+      color: Colors.orange,
+    ),
+    _BoardColumn(
+      title: 'COMPLETED',
+      icon: Icons.check_circle_rounded,
+      statuses: ['completed', 'aborted'],
+      color: Colors.green,
+    ),
+  ];
+
+  List<Map<String, dynamic>> _batchesForColumn(_BoardColumn col) {
+    return _allBatches.where((b) {
+      final s = (b['status'] as String? ?? '').toLowerCase();
+      return col.statuses.contains(s);
+    }).toList();
+  }
+
+  // ---- Build ----
+
   @override
   Widget build(BuildContext context) {
     final colors = ActiveTheme.of(context);
 
     return Column(
       children: [
-        // ── Header ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
-            children: [
-              Icon(Icons.assignment_rounded, color: colors.accent, size: 22),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Batch Records',
-                  style: GoogleFonts.outfit(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-              Text(
-                '${_batches.length} records',
-                style: GoogleFonts.dmMono(fontSize: 12, color: colors.textSecondary),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                icon: Icon(Icons.refresh_rounded, color: colors.textSecondary, size: 20),
-                onPressed: _load,
-              ),
-            ],
-          ),
-        ),
-
-        // ── Status filter dropdown ──
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Container(
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: colors.surfaceBorder),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String?>(
-                value: _statusFilter,
-                isExpanded: true,
-                dropdownColor: colors.surface,
-                icon: Icon(Icons.keyboard_arrow_down_rounded, color: colors.textSecondary, size: 20),
-                style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary),
-                items: _statusFilters.map((f) {
-                  final label = f == null ? 'All Statuses' : f[0].toUpperCase() + f.substring(1);
-                  return DropdownMenuItem(
-                    value: f,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _statusColor(f ?? 'all'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(label, style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary)),
-                      ],
-                    ),
-                  );
-                }).toList(),
-                onChanged: (v) {
-                  setState(() => _statusFilter = v);
-                  _load();
-                },
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        // ── Batch list (responsive grid on wide) ──
+        _buildHeader(colors),
         Expanded(
           child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _batches.isEmpty
-                  ? Center(
-                      child: Text('No batch records',
-                          style: GoogleFonts.outfit(
-                              color: colors.textSecondary, fontSize: 14)),
-                    )
-                  : LayoutBuilder(
-                      builder: (ctx, constraints) {
-                        final cols = constraints.maxWidth >= 1200 ? 3
-                            : constraints.maxWidth >= 800 ? 2
-                            : 1;
-                        if (cols == 1) {
-                          return RefreshIndicator(
-                            onRefresh: _load,
-                            child: ListView.builder(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              itemCount: _batches.length,
-                              itemBuilder: (c, i) => _buildBatchTile(_batches[i], colors),
-                            ),
-                          );
-                        }
-                        return RefreshIndicator(
-                          onRefresh: _load,
-                          child: GridView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: cols,
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 0,
-                              mainAxisExtent: 220,
-                            ),
-                            itemCount: _batches.length,
-                            itemBuilder: (c, i) => _buildBatchTile(_batches[i], colors),
-                          ),
-                        );
-                      },
-                    ),
+              ? Center(
+                  child: CircularProgressIndicator(color: colors.accent))
+              : _allBatches.isEmpty
+                  ? _buildEmpty(colors)
+                  : _buildBoard(colors),
         ),
       ],
     );
   }
 
-  Widget _buildBatchTile(Map<String, dynamic> batch, ThemeConfig colors) {
+  // ---- Header ----
+
+  Widget _buildHeader(ThemeConfig colors) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(
+          bottom: BorderSide(color: colors.surfaceBorder, width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.assignment_rounded, color: colors.accent, size: 32),
+          const SizedBox(width: 14),
+          Text(
+            'BATCH RECORDS',
+            style: GoogleFonts.outfit(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(width: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: colors.accent.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '${_allBatches.length}',
+              style: GoogleFonts.dmMono(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: colors.accent),
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: Icon(Icons.refresh_rounded,
+                color: Colors.white70, size: 28),
+            onPressed: _load,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- Empty state ----
+
+  Widget _buildEmpty(ThemeConfig colors) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.science_outlined, size: 80, color: colors.textMuted),
+          const SizedBox(height: 16),
+          Text('No batch records',
+              style: GoogleFonts.outfit(
+                  fontSize: 26, color: Colors.white70)),
+        ],
+      ),
+    );
+  }
+
+  // ---- 3-column Kanban board ----
+
+  Widget _buildBoard(ThemeConfig colors) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (int i = 0; i < _columns.length; i++) ...[
+            if (i > 0) const SizedBox(width: 14),
+            Expanded(
+              child: _buildColumn(_columns[i], colors),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildColumn(_BoardColumn col, ThemeConfig colors) {
+    final batches = _batchesForColumn(col);
+    final colColor = col.color.shade300;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: col.color.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colColor.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        children: [
+          // Column header
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: BoxDecoration(
+              color: colColor.withValues(alpha: 0.1),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(14)),
+            ),
+            child: Row(
+              children: [
+                Icon(col.icon, color: colColor, size: 26),
+                const SizedBox(width: 10),
+                Text(
+                  col.title,
+                  style: GoogleFonts.outfit(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: colColor,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${batches.length}',
+                    style: GoogleFonts.dmMono(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: colColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Scrollable batch cards
+          Expanded(
+            child: batches.isEmpty
+                ? Center(
+                    child: Text(
+                      'None',
+                      style: GoogleFonts.outfit(
+                          fontSize: 20, color: Colors.white24),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: batches.length,
+                    itemBuilder: (_, i) =>
+                        _buildBatchCard(batches[i], colColor, colors),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- Batch card ----
+
+  Widget _buildBatchCard(
+      Map<String, dynamic> batch, Color colColor, ThemeConfig colors) {
     final batchId = batch['batch_id'] as String? ?? '';
     final recipe = batch['recipe_name'] as String? ?? '';
     final device = batch['device_id'] as String? ?? '';
@@ -206,92 +302,110 @@ class _BatchRecordScreenState extends State<BatchRecordScreen> {
     final notes = batch['notes'] as String?;
 
     final isExpanded = _expandedBatchId == batchId;
-    final statusColor = _statusColor(status);
 
-    return Card(
-      color: colors.surface,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: isExpanded ? colors.accent.withValues(alpha: 0.5) : colors.surfaceBorder,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isExpanded
+              ? colColor.withValues(alpha: 0.6)
+              : colors.surfaceBorder,
+          width: isExpanded ? 2 : 1.5,
         ),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         onTap: () => _loadDetail(batchId),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Row 1: batch ID + status
+              // Batch ID + status
               Row(
                 children: [
-                  Icon(Icons.science_rounded, size: 16, color: colors.accent),
-                  const SizedBox(width: 6),
+                  Icon(Icons.science_rounded, size: 24, color: colColor),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       batchId,
                       style: GoogleFonts.dmMono(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: colors.textPrimary,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  _statusBadge(status, statusColor),
+                  _statusBadge(status, colColor),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 14),
 
-              // Row 2: recipe + device + operator
-              Row(
-                children: [
-                  _infoChip(Icons.receipt_long_rounded, recipe, colors),
-                  const SizedBox(width: 8),
-                  _infoChip(Icons.memory_rounded, device, colors),
-                  const SizedBox(width: 8),
-                  _infoChip(Icons.person_outline_rounded, operator, colors),
-                ],
-              ),
-              const SizedBox(height: 4),
+              // Recipe
+              _infoRow(Icons.receipt_long_rounded, recipe, colors),
+              const SizedBox(height: 8),
+              // Device
+              _infoRow(Icons.memory_rounded, device, colors),
+              const SizedBox(height: 8),
+              // Operator
+              _infoRow(Icons.person_outline_rounded, operator, colors),
+              const SizedBox(height: 12),
 
-              // Row 3: times
-              Row(
-                children: [
-                  Text('Start: ${_fmtTime(startTime)}',
-                      style: GoogleFonts.dmMono(fontSize: 10, color: colors.textSecondary)),
-                  if (endTime != null) ...[
-                    const SizedBox(width: 12),
-                    Text('End: ${_fmtTime(endTime)}',
-                        style: GoogleFonts.dmMono(fontSize: 10, color: colors.textSecondary)),
-                    const SizedBox(width: 12),
-                    Text(_duration(startTime, endTime),
-                        style: GoogleFonts.dmMono(fontSize: 10, color: statusColor)),
-                  ],
-                ],
+              // Times
+              Text(
+                'Start  ${_fmtTime(startTime)}',
+                style: GoogleFonts.dmMono(
+                    fontSize: 17, color: Colors.white60),
               ),
+              if (endTime != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'End    ${_fmtTime(endTime)}',
+                  style: GoogleFonts.dmMono(
+                      fontSize: 17, color: Colors.white60),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Duration  ${_duration(startTime, endTime)}',
+                  style: GoogleFonts.dmMono(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: colColor),
+                ),
+              ],
 
               // Notes
               if (notes != null && notes.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text('Notes: $notes',
-                    style: GoogleFonts.outfit(fontSize: 11, color: colors.textSecondary)),
+                const SizedBox(height: 10),
+                Text(
+                  notes,
+                  style: GoogleFonts.outfit(
+                      fontSize: 17, color: Colors.white54),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
 
               // Expanded: steps timeline
               if (isExpanded && _expandedDetail != null) ...[
-                const SizedBox(height: 12),
-                _buildStepsTimeline(colors),
+                const SizedBox(height: 16),
+                Divider(color: colColor.withValues(alpha: 0.2), height: 1),
+                const SizedBox(height: 14),
+                _buildStepsTimeline(colColor, colors),
               ],
 
               // Expand indicator
+              const SizedBox(height: 8),
               Center(
                 child: Icon(
-                  isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                  size: 18,
-                  color: colors.textSecondary,
+                  isExpanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 26,
+                  color: Colors.white38,
                 ),
               ),
             ],
@@ -301,64 +415,67 @@ class _BatchRecordScreenState extends State<BatchRecordScreen> {
     );
   }
 
-  Widget _buildStepsTimeline(ThemeConfig colors) {
+  // ---- Steps timeline ----
+
+  Widget _buildStepsTimeline(Color colColor, ThemeConfig colors) {
     final steps = (_expandedDetail?['steps'] as List?) ?? [];
     if (steps.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text('No steps recorded',
-            style: GoogleFonts.outfit(fontSize: 12, color: colors.textSecondary)),
+            style: GoogleFonts.outfit(
+                fontSize: 19, color: Colors.white54)),
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Batch Steps',
+        Text('STEPS',
             style: GoogleFonts.outfit(
-                fontSize: 13, fontWeight: FontWeight.w600, color: colors.textPrimary)),
-        const SizedBox(height: 8),
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: 1)),
+        const SizedBox(height: 12),
         ...List.generate(steps.length, (i) {
           final step = steps[i] as Map<String, dynamic>;
           final name = step['name'] as String? ?? '';
           final status = step['status'] as String? ?? '';
           final startTime = step['start_time'] as String? ?? '';
           final endTime = step['end_time'] as String?;
-          final params = step['parameters'] as String?;
           final result = step['result'] as String?;
           final isLast = i == steps.length - 1;
 
           final stepColor = switch (status) {
             'completed' => Colors.green.shade300,
-            'running' => colors.accent,
+            'running' => Colors.blue.shade300,
             'failed' => Colors.red.shade300,
-            _ => colors.textSecondary,
+            _ => Colors.white38,
           };
 
           return IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Timeline connector
+                // Timeline dot + connector
                 SizedBox(
-                  width: 28,
+                  width: 36,
                   child: Column(
                     children: [
                       Container(
-                        width: 12,
-                        height: 12,
+                        width: 18,
+                        height: 18,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: stepColor.withValues(alpha: 0.2),
-                          border: Border.all(color: stepColor, width: 2),
+                          border: Border.all(color: stepColor, width: 3),
                         ),
                       ),
                       if (!isLast)
                         Expanded(
                           child: Container(
-                            width: 2,
-                            color: colors.surfaceBorder,
-                          ),
+                              width: 3, color: colors.surfaceBorder),
                         ),
                     ],
                   ),
@@ -367,36 +484,38 @@ class _BatchRecordScreenState extends State<BatchRecordScreen> {
                 // Step content
                 Expanded(
                   child: Padding(
-                    padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+                    padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Text('Step ${step['step_number'] ?? i + 1}: $name',
+                            Expanded(
+                              child: Text(
+                                '${step['step_number'] ?? i + 1}. $name',
                                 style: GoogleFonts.outfit(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: colors.textPrimary)),
-                            const Spacer(),
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white),
+                              ),
+                            ),
                             Text(status.toUpperCase(),
                                 style: GoogleFonts.dmMono(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
                                     color: stepColor)),
                           ],
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 3),
                         Text(
-                          '${_fmtTime(startTime)}${endTime != null ? ' → ${_fmtTime(endTime)}' : ' → ...'}',
-                          style: GoogleFonts.dmMono(fontSize: 10, color: colors.textSecondary),
+                          '${_fmtTime(startTime)}${endTime != null ? ' → ${_fmtTime(endTime)}' : ' → …'}',
+                          style: GoogleFonts.dmMono(
+                              fontSize: 15, color: Colors.white54),
                         ),
-                        if (params != null)
-                          Text('Params: $params',
-                              style: GoogleFonts.dmMono(fontSize: 10, color: colors.textSecondary)),
                         if (result != null)
                           Text('Result: $result',
-                              style: GoogleFonts.dmMono(fontSize: 10, color: stepColor)),
+                              style: GoogleFonts.dmMono(
+                                  fontSize: 15, color: stepColor)),
                       ],
                     ),
                   ),
@@ -409,39 +528,39 @@ class _BatchRecordScreenState extends State<BatchRecordScreen> {
     );
   }
 
-  Widget _infoChip(IconData icon, String text, ThemeConfig colors) {
+  // ---- Helpers ----
+
+  Widget _infoRow(IconData icon, String text, ThemeConfig colors) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 12, color: colors.textSecondary),
-        const SizedBox(width: 3),
-        Text(text, style: GoogleFonts.outfit(fontSize: 11, color: colors.textSecondary)),
+        Icon(icon, size: 20, color: Colors.white54),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text,
+              style: GoogleFonts.outfit(
+                  fontSize: 19, color: Colors.white70),
+              overflow: TextOverflow.ellipsis),
+        ),
       ],
     );
   }
 
   Widget _statusBadge(String status, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         status.toUpperCase(),
-        style: GoogleFonts.dmMono(fontSize: 9, fontWeight: FontWeight.w600, color: color),
+        style: GoogleFonts.dmMono(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: color,
+            letterSpacing: 0.5),
       ),
     );
-  }
-
-  Color _statusColor(String status) {
-    return switch (status) {
-      'running' => Colors.blue.shade300,
-      'completed' => Colors.green.shade300,
-      'aborted' => Colors.red.shade300,
-      'held' => Colors.orange.shade300,
-      _ => Colors.cyan.shade300,
-    };
   }
 
   String _fmtTime(String ts) {
@@ -462,4 +581,19 @@ class _BatchRecordScreenState extends State<BatchRecordScreen> {
       return '';
     }
   }
+}
+
+/// Column config for the Kanban board.
+class _BoardColumn {
+  final String title;
+  final IconData icon;
+  final List<String> statuses;
+  final MaterialColor color;
+
+  const _BoardColumn({
+    required this.title,
+    required this.icon,
+    required this.statuses,
+    required this.color,
+  });
 }

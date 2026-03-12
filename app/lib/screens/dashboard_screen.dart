@@ -10,9 +10,9 @@ import '../services/auth_service.dart';
 import '../stores/dashboard_store.dart';
 import '../widgets/batch_state_widget.dart';
 import '../widgets/alarm_banner_widget.dart';
-import '../widgets/connection_status_bar.dart';
 import '../widgets/control_toggle_widget.dart';
 import '../widgets/esig_dialog.dart';
+import '../widgets/persistent_alarm_panel.dart';
 
 class DashboardScreen extends StatelessWidget {
   final DashboardStore store;
@@ -43,31 +43,22 @@ class DashboardScreen extends StatelessWidget {
       builder: (context, constraints) {
         return Observer(
           builder: (_) {
-            final isWide = constraints.maxWidth > 700;
             return Column(
               children: [
-                ConnectionStatusBar(
+                // ── Vyuh Branding Bar ──
+                _BrandingBar(
+                  store: store,
+                  colors: colors,
                   isServerConnected: store.isServerConnected,
                   isWsConnected: store.isWsConnected,
                   alarms: store.activeAlarms.toList(),
-                ),
-                _DeviceSwitcherBar(
-                  store: store,
-                  colors: colors,
                   onAddDevice: onNavigateToDevices,
                 ),
-                if (store.activeAlarms.isNotEmpty)
-                  AlarmBanner(
-                    alarms: store.activeAlarms.toList(),
-                    onDismiss: store.dismissAlarm,
-                  ),
                 Expanded(
                   child: Stack(
                     children: [
-                      isWide
-                          ? _wideLayout(constraints, colors)
-                          : _narrowLayout(colors),
-                      // OFFLINE overlay — shown when the active device is disconnected.
+                      _hmiLayout(context, constraints, colors),
+                      // OFFLINE overlay
                       if (store.activeDevice?.isConnected == false)
                         _OfflineBanner(
                           deviceName: store.activeDevice!.name,
@@ -85,222 +76,207 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _wideLayout(BoxConstraints constraints, ThemeConfig colors) {
+  /// HMI 2-column layout designed for 2K factory displays.
+  ///
+  /// Follows ISA-101 High-Performance HMI guidelines:
+  /// - Left column: Gauges + Stat Cards + Charts (monitoring)
+  /// - Right column: Controls + Persistent Alarm Panel (action)
+  Widget _hmiLayout(BuildContext context, BoxConstraints constraints, ThemeConfig colors) {
     final registry = WidgetRegistry(config: config, store: store);
     final w = constraints.maxWidth;
-    final gaugeSize = w >= 1200 ? 220.0 : 200.0;
-    final chartHeight = w >= 1200 ? 260.0 : 220.0;
+    final gaugeSize = w >= 1600 ? 380.0 : w >= 1200 ? 340.0 : 300.0;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1400),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Top row: Gauge + Batch | Stat Cards ──
-              Row(
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ════════════════════════════════════════════
+          // LEFT COLUMN — Monitoring (Gauges, Cards, Charts)
+          // ════════════════════════════════════════════
+          Expanded(
+            flex: 1,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: gaugeSize + 40,
-                    child: Column(
-                      children: [
-                        registry.buildGauge(size: gaugeSize) ??
+                  // ── Top Row: Gauge + Stat Cards grid ──
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Gauge column
+                      SizedBox(
+                        width: gaugeSize + 40,
+                        child: registry.buildGauge(size: gaugeSize) ??
                             const SizedBox.shrink(),
-                        const SizedBox(height: 16),
-                        if (config.dashboard.batchState != null)
-                          BatchStateWidget(
-                            state: store.batchState,
-                            progress: store.batchProgress,
-                          ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Stat Cards — 2-column grid + Batch Reactor below
+                      Expanded(
+                        child: Column(
+                          children: [
+                            _StatCardGrid(cards: registry.buildStatCards()),
+                            if (config.dashboard.batchState != null) ...[
+                              const SizedBox(height: 12),
+                              BatchStateWidget(
+                                state: store.batchState,
+                                progress: store.batchProgress,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 20),
+                  const SizedBox(height: 12),
+                  // ── Charts Row — fills remaining vertical space ──
                   Expanded(
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: registry.buildStatCards(),
+                    child: Row(
+                      children: _interleave(
+                        registry.buildCharts(),
+                        const SizedBox(width: 12),
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              // ── Control Panel (operator / admin only) ──
-              if (_canControl && config.dashboard.controls != null)
-                _buildControlPanel(colors),
-              if (_canControl && config.dashboard.controls != null)
-                const SizedBox(height: 20),
-              // ── Charts row ──
-              SizedBox(
-                height: chartHeight,
-                child: Row(
-                  children: _interleave(
-                    registry.buildCharts(),
-                    const SizedBox(width: 12),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _narrowLayout(ThemeConfig colors) {
-    final registry = WidgetRegistry(config: config, store: store);
-
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      children: [
-        // ── Hero row: Gauge + Batch State side-by-side ──
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Gauge — compact for mobile
-            registry.buildGauge(size: 130) ?? const SizedBox.shrink(),
-            const SizedBox(width: 12),
-            // Batch state fills remaining space
-            if (config.dashboard.batchState != null)
-              Expanded(
-                child: BatchStateWidget(
-                  state: store.batchState,
-                  progress: store.batchProgress,
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-
-        // ── Stat cards — 2-column grid ──
-        _MobileStatGrid(cards: registry.buildStatCards()),
-        const SizedBox(height: 12),
-
-        // ── Operator controls ──
-        if (_canControl && config.dashboard.controls != null)
-          _buildControlPanel(colors),
-        if (_canControl && config.dashboard.controls != null)
-          const SizedBox(height: 12),
-
-        // ── Charts — stacked, compact height ──
-        ...registry
-            .buildChartsNarrow(height: 160)
-            .expand((w) => [w, const SizedBox(height: 10)]),
-      ],
-    );
-  }
-
-  // ── Control Panel (config-driven) ────────────────────────────────
-
-  Widget _buildControlPanel(ThemeConfig colors) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-      final isNarrow = constraints.maxWidth < 500;
-      final controlWidth = isNarrow ? constraints.maxWidth : 300.0;
-      final stopWidth = isNarrow ? constraints.maxWidth : 220.0;
-      return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.surfaceBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.tune_rounded, color: colors.accent, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'OPERATOR CONTROLS',
-                style: TextStyle(
-                  color: colors.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'DM Mono',
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              if (config.dashboard.controls?.agitator != null)
-                SizedBox(
-                  width: controlWidth,
-                  child: AgitatorSliderWidget(
-                    currentRpm: store.agitatorSpeed,
-                    isOverridden: store.agitatorOverrideActive,
-                    isLoading: store.isWriting,
-                    onSetRpm: (rpm) => store.setAgitatorRpm(rpm),
-                    onClearOverride: () => store.clearAgitatorOverride(),
-                  ),
-                ),
-              // ── Setpoint Controls (config-driven) ──
-              for (final sp in config.dashboard.controls?.setpoints ?? [])
-                SizedBox(
-                  width: controlWidth,
-                  child: _SetpointSlider(
-                    config: sp,
-                    currentValue: store.liveValues[sp.register] ?? 0,
-                    isLoading: store.isWriting,
-                    colors: colors,
-                    onSet: (value) => store.writeRegister(register: sp.register, value: value),
-                    onClear: () => store.writeRegister(register: sp.register, value: 0),
-                  ),
-                ),
-              if (config.dashboard.controls?.emergencyStop != null)
-                SizedBox(
-                  width: stopWidth,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      EmergencyStopButton(
-                        isLoading: store.isWriting,
-                        onPressed: () => _withEsig(
-                          context,
-                          'Emergency Stop — Force Batch to IDLE',
-                          () => store.emergencyStop(),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _RestartBatchButton(
-                        isLoading: store.isWriting,
-                        isIdle: store.batchState == BatchState.idle,
-                        onPressed: () => store.restartBatch(),
-                      ),
-                      if (store.lastWriteError != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          store.lastWriteError!,
-                          style: TextStyle(
-                            color: colors.danger,
-                            fontSize: 10,
-                            fontFamily: 'DM Mono',
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-            ],
+          // ════════════════════════════════════════════
+          // RIGHT COLUMN — Controls + Persistent Alarms (2-col grid)
+          // ════════════════════════════════════════════
+          Expanded(
+            flex: 1,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: _buildControlGrid(context, colors),
+            ),
           ),
         ],
       ),
     );
-      },
+  }
+
+  // ── Control Grid (2-column layout matching wireframe) ─────────────
+
+  Widget _buildControlGrid(BuildContext ctx, ThemeConfig colors) {
+    final controlWidgets = <Widget>[];
+
+    if (_canControl && config.dashboard.controls != null) {
+      // Agitator speed
+      if (config.dashboard.controls?.agitator != null) {
+        controlWidgets.add(AgitatorSliderWidget(
+          currentRpm: store.agitatorSpeed,
+          isOverridden: store.agitatorOverrideActive,
+          isLoading: store.isWriting,
+          onSetRpm: (rpm) => store.setAgitatorRpm(rpm),
+          onClearOverride: () => store.clearAgitatorOverride(),
+        ));
+      }
+
+      // Setpoint sliders — each as its own card
+      for (final sp in config.dashboard.controls?.setpoints ?? []) {
+        controlWidgets.add(_SetpointSlider(
+          config: sp,
+          currentValue: store.liveValues[sp.register] ?? 0,
+          isLoading: store.isWriting,
+          colors: colors,
+          onSet: (value) =>
+              store.writeRegister(register: sp.register, value: value),
+          onClear: () =>
+              store.writeRegister(register: sp.register, value: 0),
+        ));
+      }
+
+      // Emergency stop + restart — side by side, same size
+      if (config.dashboard.controls?.emergencyStop != null) {
+        controlWidgets.add(IntrinsicHeight(
+          child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: EmergencyStopButton(
+                isLoading: store.isWriting,
+                onPressed: () => _withEsig(
+                  ctx,
+                  'Emergency Stop — Force Batch to IDLE',
+                  () => store.emergencyStop(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _RestartBatchButton(
+                isLoading: store.isWriting,
+                isIdle: store.batchState == BatchState.idle,
+                onPressed: () => store.restartBatch(),
+              ),
+            ),
+          ],
+        )));
+        if (store.lastWriteError != null) {
+          controlWidgets.add(Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              store.lastWriteError!,
+              style: TextStyle(
+                color: colors.danger,
+                fontSize: 12,
+                fontFamily: 'DM Mono',
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ));
+        }
+      }
+    }
+
+    // Persistent alarm panel is first item in right column of row 1
+    final alarmPanel = PersistentAlarmPanel(
+      alarms: store.activeAlarms.toList(),
+      onDismiss: store.dismissAlarm,
     );
+
+    // Build 2-column grid: top-right = alarms, rest = controls
+    final rows = <Widget>[];
+    // Row 1: first control | alarms
+    rows.add(Expanded(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: controlWidgets.isNotEmpty
+                ? controlWidgets[0]
+                : const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: alarmPanel),
+        ],
+      ),
+    ));
+
+    // Remaining controls in pairs
+    for (var i = 1; i < controlWidgets.length; i += 2) {
+      final hasSecond = i + 1 < controlWidgets.length;
+      rows.add(const SizedBox(height: 12));
+      rows.add(Expanded(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: controlWidgets[i]),
+            const SizedBox(width: 12),
+            if (hasSecond)
+              Expanded(child: controlWidgets[i + 1])
+            else
+              const Expanded(child: SizedBox()),
+          ],
+        ),
+      ));
+    }
+
+    return Column(children: rows);
   }
 
   /// Gate a critical action behind electronic signature verification.
@@ -358,37 +334,39 @@ class _RestartBatchButton extends StatelessWidget {
           onTap: (isLoading || !isIdle) ? null : () => _confirmRestart(context),
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
             decoration: BoxDecoration(
               color: colors.healthy.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                  color: colors.healthy.withValues(alpha: 0.5), width: 1.5),
+                  color: colors.healthy.withValues(alpha: 0.5), width: 2),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (isLoading)
                   SizedBox(
-                    width: 20,
-                    height: 20,
+                    width: 36,
+                    height: 36,
                     child: CircularProgressIndicator(
-                      strokeWidth: 2,
+                      strokeWidth: 3,
                       color: colors.healthy,
                     ),
                   )
                 else
                   Icon(Icons.play_arrow_rounded,
-                      color: colors.healthy, size: 20),
-                const SizedBox(width: 8),
+                      color: colors.healthy, size: 56),
+                const SizedBox(height: 12),
                 Text(
-                  'RESTART BATCH',
+                  'RESTART\nBATCH',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: colors.healthy,
-                    fontSize: 13,
+                    fontSize: 28,
                     fontWeight: FontWeight.w700,
                     fontFamily: 'DM Mono',
-                    letterSpacing: 1.5,
+                    letterSpacing: 2,
+                    height: 1.3,
                   ),
                 ),
               ],
@@ -513,48 +491,47 @@ class _SetpointSliderState extends State<_SetpointSlider> {
     final pending = _displayValue(_pending);
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.surfaceBorder),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.surfaceBorder, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
-              Icon(Icons.tune_rounded, size: 16, color: colors.accent),
-              const SizedBox(width: 6),
+              Icon(Icons.tune_rounded, size: 26, color: colors.accent),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   sp.label,
                   style: TextStyle(
-                    color: colors.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
               Text(
                 'NOW: $current ${sp.unit}',
                 style: TextStyle(
-                  color: colors.textMuted,
-                  fontSize: 10,
+                  color: Colors.white60,
+                  fontSize: 22,
                   fontFamily: 'DM Mono',
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const Spacer(),
           Row(
             children: [
               Text(
                 _displayValue(sp.min.toDouble()),
                 style: TextStyle(
-                  color: colors.textMuted,
-                  fontSize: 10,
+                  color: Colors.white54,
+                  fontSize: 18,
                   fontFamily: 'DM Mono',
                 ),
               ),
@@ -564,8 +541,8 @@ class _SetpointSliderState extends State<_SetpointSlider> {
                     activeTrackColor: colors.accent,
                     inactiveTrackColor: colors.surfaceBorder,
                     thumbColor: colors.accent,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 16),
+                    trackHeight: 10,
                   ),
                   child: Slider(
                     value: _pending,
@@ -581,195 +558,62 @@ class _SetpointSliderState extends State<_SetpointSlider> {
               Text(
                 _displayValue(sp.max.toDouble()),
                 style: TextStyle(
-                  color: colors.textMuted,
-                  fontSize: 10,
+                  color: Colors.white54,
+                  fontSize: 18,
                   fontFamily: 'DM Mono',
                 ),
               ),
             ],
           ),
+          const Spacer(),
           Row(
             children: [
               Text(
                 'SET: $pending ${sp.unit}',
                 style: TextStyle(
                   color: colors.accent,
-                  fontSize: 12,
+                  fontSize: 32,
                   fontWeight: FontWeight.w700,
                   fontFamily: 'DM Mono',
                 ),
               ),
               const Spacer(),
               SizedBox(
-                height: 30,
+                height: 46,
                 child: TextButton(
                   onPressed: widget.isLoading ? null : () => widget.onClear(),
                   style: TextButton.styleFrom(
-                    foregroundColor: colors.textMuted,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    foregroundColor: Colors.white54,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                   ),
-                  child: const Text('AUTO', style: TextStyle(fontSize: 10, fontFamily: 'DM Mono')),
+                  child: const Text('AUTO', style: TextStyle(fontSize: 22, fontFamily: 'DM Mono', fontWeight: FontWeight.w600)),
                 ),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
               SizedBox(
-                height: 30,
+                height: 46,
                 child: FilledButton(
                   onPressed: widget.isLoading ? null : () => widget.onSet(_pending.round()),
                   style: FilledButton.styleFrom(
                     backgroundColor: colors.accent,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
                   ),
                   child: widget.isLoading
                       ? SizedBox(
-                          width: 14,
-                          height: 14,
+                          width: 18,
+                          height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: colors.textPrimary,
                           ),
                         )
-                      : const Text('APPLY', style: TextStyle(fontSize: 10, fontFamily: 'DM Mono', fontWeight: FontWeight.w700)),
+                      : const Text('APPLY', style: TextStyle(fontSize: 22, fontFamily: 'DM Mono', fontWeight: FontWeight.w700)),
                 ),
               ),
             ],
           ),
         ],
       ),
-    );
-  }
-}
-
-// ── Device Switcher Bar ──────────────────────────────────────────────
-
-class _DeviceSwitcherBar extends StatelessWidget {
-  final DashboardStore store;
-  final ThemeConfig colors;
-  final VoidCallback? onAddDevice;
-
-  const _DeviceSwitcherBar({required this.store, required this.colors, this.onAddDevice});
-
-  @override
-  Widget build(BuildContext context) {
-    return Observer(
-      builder: (_) {
-        final devices = store.devices;
-        final active = store.activeDevice;
-        final activeId = store.activeDeviceId;
-
-        if (devices.isEmpty) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: colors.surface,
-            child: Row(
-              children: [
-                Icon(Icons.memory_rounded, size: 16, color: colors.accent),
-                const SizedBox(width: 8),
-                Text(
-                  'Device: $activeId',
-                  style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: colors.accent,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final isNarrow = constraints.maxWidth < 500;
-            return Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: colors.surface,
-                border: Border(
-                  bottom: BorderSide(color: colors.surfaceBorder, width: 1),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.memory_rounded, size: 16, color: colors.accent),
-                  if (!isNarrow) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      'DEVICE',
-                      style: GoogleFonts.outfit(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                        color: colors.textMuted,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: devices.map((dev) {
-                          final isActive = dev.id == activeId;
-                          final protocolColor = dev.protocol == 'opcua'
-                              ? const Color(0xFF26A69A)
-                              : const Color(0xFF42A5F5);
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: _DeviceChip(
-                              label: dev.name,
-                              sublabel: dev.protocol.toUpperCase(),
-                              isActive: isActive,
-                              isConnected: dev.isConnected,
-                              accentColor: isActive ? colors.accent : protocolColor,
-                              onTap: () => store.switchDevice(dev.id),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ),
-                  if (onAddDevice != null)
-                    IconButton(
-                      icon: Icon(Icons.add_circle_outline_rounded,
-                          size: 20, color: colors.accent),
-                      tooltip: 'Add / Discover PLCs',
-                      onPressed: onAddDevice,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                      padding: EdgeInsets.zero,
-                    ),
-                  // Hide the standalone protocol tag on narrow screens
-                  if (!isNarrow && active != null) ...[
-                    Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: (active.protocol == 'opcua'
-                                ? const Color(0xFF26A69A)
-                                : const Color(0xFF42A5F5))
-                            .withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        active.protocol.toUpperCase(),
-                        style: GoogleFonts.jetBrainsMono(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: active.protocol == 'opcua'
-                              ? const Color(0xFF26A69A)
-                              : const Color(0xFF42A5F5),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            );
-          },
-        );
-      },
     );
   }
 }
@@ -800,35 +644,35 @@ class _DeviceChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color: isActive
                 ? accentColor.withValues(alpha: 0.15)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isActive
                   ? accentColor.withValues(alpha: 0.5)
                   : Colors.white10,
-              width: isActive ? 1.5 : 1,
+              width: isActive ? 2 : 1,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 6,
-                height: 6,
+                width: 8,
+                height: 8,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isConnected ? const Color(0xFF66BB6A) : Colors.red,
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Text(
                 label,
                 style: GoogleFonts.outfit(
-                  fontSize: 12,
+                  fontSize: 15,
                   fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                   color: isActive ? accentColor : Colors.white70,
                 ),
@@ -862,11 +706,11 @@ class _DeviceChip extends StatelessWidget {
   }
 }
 
-// ── Mobile 2-column stat card grid ────────────────────────────────────────────
+// ── 2-Column Stat Card Grid (HMI layout) ────────────────────────────────────
 
-class _MobileStatGrid extends StatelessWidget {
+class _StatCardGrid extends StatelessWidget {
   final List<Widget> cards;
-  const _MobileStatGrid({required this.cards});
+  const _StatCardGrid({required this.cards});
 
   @override
   Widget build(BuildContext context) {
@@ -876,14 +720,225 @@ class _MobileStatGrid extends StatelessWidget {
       rows.add(Row(
         children: [
           Expanded(child: cards[i]),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           if (hasSecond) Expanded(child: cards[i + 1])
           else const Expanded(child: SizedBox()),
         ],
       ));
-      if (i + 2 < cards.length) rows.add(const SizedBox(height: 10));
+      if (i + 2 < cards.length) rows.add(const SizedBox(height: 12));
     }
     return Column(children: rows);
+  }
+}
+
+// ── Vyuh HMI Branding Bar ─────────────────────────────────────────────────────
+
+class _BrandingBar extends StatelessWidget {
+  final DashboardStore store;
+  final ThemeConfig colors;
+  final bool isServerConnected;
+  final bool isWsConnected;
+  final List<Alarm> alarms;
+  final VoidCallback? onAddDevice;
+
+  const _BrandingBar({
+    required this.store,
+    required this.colors,
+    required this.isServerConnected,
+    required this.isWsConnected,
+    required this.alarms,
+    this.onAddDevice,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final allGood = isServerConnected && isWsConnected;
+    final devices = store.devices;
+    final activeId = store.activeDeviceId;
+    final active = store.activeDevice;
+    final critCount =
+        alarms.where((a) => a.severity == AlarmSeverity.critical).length;
+    final warnCount =
+        alarms.where((a) => a.severity == AlarmSeverity.warning).length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(
+          bottom: BorderSide(color: colors.surfaceBorder, width: 1.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          // ── Vyuh Logo / Branding ──
+          Icon(Icons.precision_manufacturing_rounded,
+              color: colors.accent, size: 28),
+          const SizedBox(width: 12),
+          Text(
+            'VYUH',
+            style: GoogleFonts.dmMono(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              color: colors.accent,
+              letterSpacing: 4,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'HMI',
+            style: GoogleFonts.outfit(
+              fontSize: 24,
+              fontWeight: FontWeight.w400,
+              color: colors.textMuted,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(width: 32),
+          // ── Device Switcher (inline) ──
+          if (devices.isNotEmpty) ...[
+            Container(width: 1, height: 24, color: colors.surfaceBorder),
+            const SizedBox(width: 16),
+            Icon(Icons.memory_rounded, size: 20, color: colors.textMuted),
+            const SizedBox(width: 8),
+            ...devices.map((dev) {
+              final isActive = dev.id == activeId;
+              final protocolColor = dev.protocol == 'opcua'
+                  ? const Color(0xFF26A69A)
+                  : const Color(0xFF42A5F5);
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _DeviceChip(
+                  label: dev.name,
+                  sublabel: dev.protocol.toUpperCase(),
+                  isActive: isActive,
+                  isConnected: dev.isConnected,
+                  accentColor: isActive ? colors.accent : protocolColor,
+                  onTap: () => store.switchDevice(dev.id),
+                ),
+              );
+            }),
+            if (onAddDevice != null)
+              IconButton(
+                icon: Icon(Icons.add_circle_outline_rounded,
+                    size: 22, color: colors.accent),
+                tooltip: 'Add / Discover PLCs',
+                onPressed: onAddDevice,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
+              ),
+          ] else ...[
+            Container(width: 1, height: 24, color: colors.surfaceBorder),
+            const SizedBox(width: 16),
+            Icon(Icons.memory_rounded, size: 20, color: colors.accent),
+            const SizedBox(width: 8),
+            Text(
+              'Device: $activeId',
+              style: GoogleFonts.outfit(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: colors.accent,
+              ),
+            ),
+          ],
+          const Spacer(),
+          // ── Alarm Counts ──
+          if (critCount > 0)
+            _statusBadge(critCount, 'CRIT', colors.danger),
+          if (critCount > 0 && warnCount > 0)
+            const SizedBox(width: 8),
+          if (warnCount > 0)
+            _statusBadge(warnCount, 'WARN', colors.warning),
+          if (critCount > 0 || warnCount > 0)
+            const SizedBox(width: 16),
+          // ── Connection Status ──
+          Container(width: 1, height: 24, color: colors.surfaceBorder),
+          const SizedBox(width: 16),
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: allGood ? colors.healthy : colors.danger,
+              boxShadow: [
+                BoxShadow(
+                  color: (allGood ? colors.healthy : colors.danger)
+                      .withValues(alpha: 0.5),
+                  blurRadius: 6,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            allGood ? 'ONLINE' : 'OFFLINE',
+            style: GoogleFonts.dmMono(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: allGood ? colors.healthy : colors.danger,
+              letterSpacing: 1.5,
+            ),
+          ),
+          // ── Protocol badge ──
+          if (active != null) ...[
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: (active.protocol == 'opcua'
+                        ? const Color(0xFF26A69A)
+                        : const Color(0xFF42A5F5))
+                    .withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                active.protocol.toUpperCase(),
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: active.protocol == 'opcua'
+                      ? const Color(0xFF26A69A)
+                      : const Color(0xFF42A5F5),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _statusBadge(int count, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$count',
+            style: GoogleFonts.dmMono(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.dmMono(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

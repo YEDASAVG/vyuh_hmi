@@ -233,7 +233,6 @@ class _HmiAppState extends State<HmiApp> {
           onTimeout: _onLogout,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final useRail = constraints.maxWidth >= 800;
               final screens = [
                 DashboardScreen(
                     store: store,
@@ -253,143 +252,46 @@ class _HmiAppState extends State<HmiApp> {
                 AuditTrailScreen(authService: authService),
               ];
 
-              if (useRail) {
-                // ── Desktop / Web: side NavigationRail ──
-                return Scaffold(
-                  body: Column(
+              // ── Bottom Menu Bar (no sidebar — matches HMI wireframe) ──
+              return Scaffold(
+                body: IndexedStack(
+                  index: _currentIndex,
+                  children: screens,
+                ),
+                bottomNavigationBar: Container(
+                  decoration: BoxDecoration(
+                    color: config.theme.surface,
+                    border: Border(
+                      top: BorderSide(
+                          color: config.theme.surfaceBorder, width: 1.5),
+                    ),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildUserBar(config, user),
-                      Expanded(
-                        child: Row(
-                          children: [
-                            NavigationRail(
-                              selectedIndex: _currentIndex,
-                              onDestinationSelected: (i) =>
-                                  setState(() => _currentIndex = i),
-                              extended: constraints.maxWidth >= 1100,
-                              minWidth: 64,
-                              minExtendedWidth: 180,
-                              backgroundColor: config.theme.surface,
-                              selectedIconTheme: IconThemeData(
-                                color: config.theme.accent,
-                              ),
-                              unselectedIconTheme: IconThemeData(
-                                color: config.theme.textMuted,
-                              ),
-                              selectedLabelTextStyle: GoogleFonts.outfit(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: config.theme.accent,
-                              ),
-                              unselectedLabelTextStyle: GoogleFonts.outfit(
-                                fontSize: 13,
-                                color: config.theme.textSecondary,
-                              ),
-                              indicatorColor:
-                                  config.theme.accent.withValues(alpha: 0.15),
-                              destinations: const [
-                                NavigationRailDestination(
-                                  icon: Icon(Icons.dashboard_rounded),
-                                  label: Text('Dashboard'),
-                                ),
-                                NavigationRailDestination(
-                                  icon: Icon(
-                                      Icons.precision_manufacturing_rounded),
-                                  label: Text('PLC Detail'),
-                                ),
-                                NavigationRailDestination(
-                                  icon: Icon(Icons.history_rounded),
-                                  label: Text('History'),
-                                ),
-                                NavigationRailDestination(
-                                  icon: Icon(Icons.warning_amber_rounded),
-                                  label: Text('Alarms'),
-                                ),
-                                NavigationRailDestination(
-                                  icon: Icon(Icons.assignment_rounded),
-                                  label: Text('Batches'),
-                                ),
-                                NavigationRailDestination(
-                                  icon: Icon(Icons.devices_other_rounded),
-                                  label: Text('Devices'),
-                                ),
-                                NavigationRailDestination(
-                                  icon: Icon(Icons.security_rounded),
-                                  label: Text('Audit'),
-                                ),
-                              ],
-                            ),
-                            VerticalDivider(
-                              width: 1,
-                              thickness: 1,
-                              color: config.theme.surfaceBorder,
-                            ),
-                            Expanded(
-                              child: IndexedStack(
-                                index: _currentIndex,
-                                children: screens,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      _bottomMenuItem(config, 0, Icons.dashboard_rounded,
+                          'Dashboard'),
+                      _bottomMenuItem(
+                          config,
+                          1,
+                          Icons.precision_manufacturing_rounded,
+                          'PLC Detail'),
+                      _bottomMenuItem(
+                          config, 2, Icons.history_rounded, 'History'),
+                      _bottomMenuItem(
+                          config, 3, Icons.warning_amber_rounded, 'Alarms'),
+                      _bottomMenuItem(
+                          config, 4, Icons.assignment_rounded, 'Batches'),
+                      _bottomMenuItem(
+                          config, 5, Icons.devices_other_rounded, 'Devices'),
+                      _bottomMenuItem(
+                          config, 6, Icons.security_rounded, 'Audit'),
+                      // Profile avatar with logout
+                      _buildProfileButton(context, config, user),
                     ],
                   ),
-                );
-              }
-
-              // ── Mobile / Tablet: bottom NavigationBar ──
-              final isCompact = constraints.maxWidth < 500;
-              return Scaffold(
-                body: Column(
-                  children: [
-                    _buildUserBar(config, user),
-                    Expanded(
-                      child: IndexedStack(
-                        index: _currentIndex,
-                        children: screens,
-                      ),
-                    ),
-                  ],
-                ),
-                bottomNavigationBar: NavigationBar(
-                  selectedIndex: _currentIndex,
-                  onDestinationSelected: (i) =>
-                      setState(() => _currentIndex = i),
-                  labelBehavior: isCompact
-                      ? NavigationDestinationLabelBehavior.alwaysHide
-                      : NavigationDestinationLabelBehavior.alwaysShow,
-                  height: isCompact ? 60 : 80,
-                  destinations: const [
-                    NavigationDestination(
-                      icon: Icon(Icons.dashboard_rounded),
-                      label: 'Dashboard',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.precision_manufacturing_rounded),
-                      label: 'PLC',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.history_rounded),
-                      label: 'History',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.warning_amber_rounded),
-                      label: 'Alarms',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.assignment_rounded),
-                      label: 'Batches',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.devices_other_rounded),
-                      label: 'Devices',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.security_rounded),
-                      label: 'Audit',
-                    ),
-                  ],
                 ),
               );
             },
@@ -400,88 +302,222 @@ class _HmiAppState extends State<HmiApp> {
   }
 
   /// Top bar showing current user, role badge, and logout button.
-  Widget _buildUserBar(DashboardConfig config, AuthUser? user) {
-    if (user == null) return const SizedBox.shrink();
-
-    return Container(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 4,
-        left: 16,
-        right: 8,
-        bottom: 8,
-      ),
-      decoration: BoxDecoration(
-        color: config.theme.surface,
-        border: Border(
-          bottom: BorderSide(color: config.theme.surfaceBorder),
-        ),
-      ),
-      child: Row(
-        children: [
-          // App name
-          Flexible(
-            child: Text(
-              config.name,
+  Widget _bottomMenuItem(
+      DashboardConfig config, int index, IconData icon, String label) {
+    final isSelected = _currentIndex == index;
+    final color =
+        isSelected ? config.theme.accent : config.theme.textMuted;
+    return InkWell(
+      onTap: () => setState(() => _currentIndex = index),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 22, color: color),
+            const SizedBox(height: 4),
+            Text(
+              label,
               style: GoogleFonts.outfit(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: config.theme.textPrimary,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          // User info
-          Icon(Icons.person_outline_rounded,
-              size: 16, color: config.theme.textSecondary),
-          const SizedBox(width: 4),
-          Text(
-            user.username,
-            style: GoogleFonts.outfit(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: config.theme.textPrimary,
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Role badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: _roleColor(user.role).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              user.role.toUpperCase(),
-              style: GoogleFonts.dmMono(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: _roleColor(user.role),
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                color: color,
               ),
             ),
-          ),
-          const SizedBox(width: 4),
-          // Logout
-          IconButton(
-            icon: Icon(Icons.logout_rounded,
-                size: 18, color: config.theme.textSecondary),
-            onPressed: _onLogout,
-            tooltip: 'Sign out',
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Color _roleColor(String role) {
-    switch (role) {
-      case 'admin':
-        return Colors.redAccent;
-      case 'operator':
-        return Colors.amber;
-      default:
-        return Colors.cyan;
-    }
+  /// Logout button with confirmation dialog — prevents accidental logout.
+  Widget _buildProfileButton(BuildContext navContext, DashboardConfig config, AuthUser? user) {
+    final colors = config.theme;
+    final initials = (user?.username ?? '?')
+        .split(' ')
+        .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
+        .take(2)
+        .join();
+
+    return PopupMenuButton<String>(
+      offset: const Offset(0, -180),
+      color: colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colors.surfaceBorder, width: 1.5),
+      ),
+      onSelected: (value) {
+        if (value == 'logout') _showLogoutConfirmation(navContext, config);
+      },
+      itemBuilder: (ctx) => [
+        // User info header (non-selectable)
+        PopupMenuItem(
+          enabled: false,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                user?.username ?? 'Unknown',
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _roleColor(user?.role).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  (user?.role ?? 'viewer').toUpperCase(),
+                  style: GoogleFonts.dmMono(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _roleColor(user?.role),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        // Logout option
+        PopupMenuItem(
+          value: 'logout',
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.logout_rounded,
+                  size: 22, color: Colors.red.shade300),
+              const SizedBox(width: 12),
+              Text(
+                'Logout',
+                style: GoogleFonts.outfit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.red.shade300,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: colors.accent.withValues(alpha: 0.15),
+          border: Border.all(
+              color: colors.accent.withValues(alpha: 0.4), width: 2),
+        ),
+        child: Center(
+          child: Text(
+            initials,
+            style: GoogleFonts.outfit(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: colors.accent,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _roleColor(String? role) {
+    return switch (role) {
+      'admin' => Colors.amber.shade300,
+      'operator' => Colors.blue.shade300,
+      'viewer' => Colors.green.shade300,
+      _ => Colors.grey.shade300,
+    };
+  }
+
+  void _showLogoutConfirmation(BuildContext navContext, DashboardConfig config) {
+    showDialog(
+      context: navContext,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final colors = config.theme;
+        return AlertDialog(
+          backgroundColor: colors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: colors.surfaceBorder, width: 1.5),
+          ),
+          icon: Icon(Icons.logout_rounded,
+              size: 48, color: Colors.red.shade300),
+          title: Text(
+            'Confirm Logout',
+            style: GoogleFonts.outfit(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          content: Text(
+            'Are you sure you want to log out?\nYou will need to sign in again.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+              fontSize: 18,
+              color: Colors.white70,
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actionsPadding:
+              const EdgeInsets.only(left: 24, right: 24, bottom: 20),
+          actions: [
+            // Cancel — prominent so it's the safe default
+            SizedBox(
+              width: 160,
+              height: 50,
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: colors.surfaceBorder, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text('Cancel',
+                    style: GoogleFonts.outfit(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white70)),
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Logout — red, requires deliberate click
+            SizedBox(
+              width: 160,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _onLogout();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text('Logout',
+                    style: GoogleFonts.outfit(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 

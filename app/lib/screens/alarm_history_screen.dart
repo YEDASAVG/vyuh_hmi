@@ -6,16 +6,10 @@ import '../config/dashboard_config.dart';
 import '../config/hmi_theme_engine.dart';
 import '../services/api_service.dart';
 
-/// ISA-18.2 Alarm History screen.
-///
-/// Features:
-/// - Filterable by state (Active, Acknowledged, Shelved, Cleared) and priority
-/// - Acknowledge / shelve actions for operators
-/// - Color-coded priority badges
-/// - Auto-refresh every 10 seconds
+/// ISA-18.2 Alarm History screen — scaled for 2K factory displays.
 class AlarmHistoryScreen extends StatefulWidget {
   final ApiService api;
-  final bool canManage; // operator+ can ack/shelve
+  final bool canManage;
 
   const AlarmHistoryScreen({
     super.key,
@@ -33,8 +27,12 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
   String? _stateFilter;
   int? _priorityFilter;
 
-  static const _stateFilters = <String?>[null, 'active', 'acknowledged', 'shelved', 'cleared'];
-  static const _priorityLabels = {1: 'Critical', 2: 'High', 3: 'Medium', 4: 'Low', 5: 'Info'};
+  static const _stateFilters = <String?>[
+    null, 'active', 'acknowledged', 'shelved', 'cleared'
+  ];
+  static const _priorityLabels = {
+    1: 'Critical', 2: 'High', 3: 'Medium', 4: 'Low', 5: 'Info'
+  };
 
   @override
   void initState() {
@@ -62,37 +60,48 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
   }
 
   Future<void> _shelveAlarm(int id) async {
+    final colors = ActiveTheme.of(context);
     final reason = await showDialog<String>(
       context: context,
       builder: (ctx) {
         final controller = TextEditingController();
         return AlertDialog(
-          backgroundColor: const Color(0xFF1A1A2E),
+          backgroundColor: colors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           title: Text('Shelve Alarm #$id',
-              style: GoogleFonts.outfit(color: Colors.white)),
+              style: GoogleFonts.outfit(
+                  fontSize: 24, fontWeight: FontWeight.w700,
+                  color: Colors.white)),
           content: TextField(
             controller: controller,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
+            style: GoogleFonts.outfit(fontSize: 20, color: Colors.white),
+            decoration: InputDecoration(
               hintText: 'Reason for shelving...',
-              hintStyle: TextStyle(color: Colors.white38),
+              hintStyle: GoogleFonts.outfit(
+                  fontSize: 20, color: colors.textMuted),
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text('Cancel',
+                  style: GoogleFonts.outfit(
+                      fontSize: 18, color: colors.textMuted)),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, controller.text),
-              child: const Text('Shelve 30 min'),
+              style: FilledButton.styleFrom(backgroundColor: colors.accent),
+              child: Text('Shelve 30 min',
+                  style: GoogleFonts.outfit(
+                      fontSize: 18, fontWeight: FontWeight.w600)),
             ),
           ],
         );
       },
     );
     if (reason != null && reason.isNotEmpty) {
-      final ok = await widget.api.shelveAlarm(id, durationMinutes: 30, reason: reason);
+      final ok = await widget.api.shelveAlarm(
+          id, durationMinutes: 30, reason: reason);
       if (ok) _load();
     }
   }
@@ -103,45 +112,67 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
 
     return Column(
       children: [
-        // ── Header + filters ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        // Header bar
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            border: Border(
+              bottom: BorderSide(color: colors.surfaceBorder, width: 1),
+            ),
+          ),
           child: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: colors.accent, size: 22),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Alarm History',
-                  style: GoogleFonts.outfit(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
-                  ),
+              Icon(Icons.warning_amber_rounded,
+                  color: colors.accent, size: 34),
+              const SizedBox(width: 14),
+              Text(
+                'ALARMS',
+                style: GoogleFonts.outfit(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: 2,
                 ),
               ),
-              // Refresh
+              const SizedBox(width: 24),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: colors.accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${_alarms.length} entries',
+                  style: GoogleFonts.dmMono(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: colors.accent),
+                ),
+              ),
+              const Spacer(),
               IconButton(
-                icon: Icon(Icons.refresh_rounded, color: colors.textSecondary, size: 20),
+                icon: Icon(Icons.refresh_rounded,
+                    color: Colors.white70, size: 28),
                 onPressed: _load,
               ),
             ],
           ),
         ),
 
-        // ── Dropdown filters (mobile-friendly) ──
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+        // Filters row
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
           child: Row(
             children: [
-              // State filter dropdown
               Expanded(
                 child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  height: 56,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
                   decoration: BoxDecoration(
                     color: colors.surface,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: colors.surfaceBorder),
                   ),
                   child: DropdownButtonHideUnderline(
@@ -149,13 +180,20 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
                       value: _stateFilter,
                       isExpanded: true,
                       dropdownColor: colors.surface,
-                      icon: Icon(Icons.keyboard_arrow_down_rounded, color: colors.textSecondary, size: 20),
-                      style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary),
+                      icon: Icon(Icons.keyboard_arrow_down_rounded,
+                          color: Colors.white70, size: 28),
+                      style: GoogleFonts.outfit(
+                          fontSize: 20, color: Colors.white),
                       items: _stateFilters.map((f) {
-                        final label = f == null ? 'All States' : f[0].toUpperCase() + f.substring(1);
+                        final label = f == null
+                            ? 'All States'
+                            : f[0].toUpperCase() + f.substring(1);
                         return DropdownMenuItem(
                           value: f,
-                          child: Text(label, style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary)),
+                          child: Text(label,
+                              style: GoogleFonts.outfit(
+                                  fontSize: 20,
+                                  color: Colors.white)),
                         );
                       }).toList(),
                       onChanged: (v) {
@@ -166,15 +204,14 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              // Priority filter dropdown
+              const SizedBox(width: 14),
               Expanded(
                 child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  height: 56,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
                   decoration: BoxDecoration(
                     color: colors.surface,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: colors.surfaceBorder),
                   ),
                   child: DropdownButtonHideUnderline(
@@ -182,30 +219,39 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
                       value: _priorityFilter,
                       isExpanded: true,
                       dropdownColor: colors.surface,
-                      icon: Icon(Icons.keyboard_arrow_down_rounded, color: colors.textSecondary, size: 20),
-                      style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary),
+                      icon: Icon(Icons.keyboard_arrow_down_rounded,
+                          color: Colors.white70, size: 28),
+                      style: GoogleFonts.outfit(
+                          fontSize: 20, color: Colors.white),
                       items: [
                         DropdownMenuItem<int?>(
                           value: null,
-                          child: Text('All Priorities', style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary)),
+                          child: Text('All Priorities',
+                              style: GoogleFonts.outfit(
+                                  fontSize: 20,
+                                  color: Colors.white)),
                         ),
-                        ..._priorityLabels.entries.map((e) => DropdownMenuItem<int?>(
-                          value: e.key,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: _priorityColor(e.key),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(e.value, style: GoogleFonts.outfit(fontSize: 13, color: colors.textPrimary)),
-                            ],
-                          ),
-                        )),
+                        ..._priorityLabels.entries
+                            .map((e) => DropdownMenuItem<int?>(
+                                  value: e.key,
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 14,
+                                        height: 14,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: _priorityColor(e.key),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(e.value,
+                                          style: GoogleFonts.outfit(
+                                              fontSize: 20,
+                                              color: Colors.white)),
+                                    ],
+                                  ),
+                                )),
                       ],
                       onChanged: (v) {
                         setState(() => _priorityFilter = v);
@@ -219,48 +265,32 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
           ),
         ),
 
-        const SizedBox(height: 8),
-
-        // ── Alarm list (responsive grid on wide) ──
+        // Alarm list
         Expanded(
           child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? Center(
+                  child: CircularProgressIndicator(color: colors.accent))
               : _alarms.isEmpty
                   ? Center(
-                      child: Text('No alarms',
-                          style: GoogleFonts.outfit(
-                              color: colors.textSecondary, fontSize: 14)),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle_outline_rounded,
+                              size: 80, color: colors.textMuted),
+                          const SizedBox(height: 20),
+                          Text('No alarms',
+                              style: GoogleFonts.outfit(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white70)),
+                        ],
+                      ),
                     )
-                  : LayoutBuilder(
-                      builder: (ctx, constraints) {
-                        final cols = constraints.maxWidth >= 1200 ? 3
-                            : constraints.maxWidth >= 800 ? 2
-                            : 1;
-                        if (cols == 1) {
-                          return RefreshIndicator(
-                            onRefresh: _load,
-                            child: ListView.builder(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              itemCount: _alarms.length,
-                              itemBuilder: (c, i) => _buildAlarmTile(_alarms[i], colors),
-                            ),
-                          );
-                        }
-                        return RefreshIndicator(
-                          onRefresh: _load,
-                          child: GridView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: cols,
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 0,
-                              mainAxisExtent: 180,
-                            ),
-                            itemCount: _alarms.length,
-                            itemBuilder: (c, i) => _buildAlarmTile(_alarms[i], colors),
-                          ),
-                        );
-                      },
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      itemCount: _alarms.length,
+                      itemBuilder: (c, i) =>
+                          _buildAlarmTile(_alarms[i], colors),
                     ),
         ),
       ],
@@ -279,7 +309,9 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
   }
 
   Widget _buildAlarmTile(Map<String, dynamic> alarm, ThemeConfig colors) {
-    final id = (alarm['id'] is int) ? alarm['id'] as int : int.tryParse(alarm['id'].toString()) ?? 0;
+    final id = (alarm['id'] is int)
+        ? alarm['id'] as int
+        : int.tryParse(alarm['id'].toString()) ?? 0;
     final rawPriority = alarm['priority'];
     final priority = rawPriority is int
         ? rawPriority
@@ -306,113 +338,138 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
 
     final prioColor = _priorityColor(priority);
 
-    return Card(
-      color: colors.surface,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: state == 'active' ? prioColor.withValues(alpha: 0.5) : colors.surfaceBorder,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: state == 'active'
+              ? prioColor.withValues(alpha: 0.5)
+              : colors.surfaceBorder,
+          width: state == 'active' ? 2 : 1,
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Row 1: priority badge + label + state badge + time
+            // Row 1: priority badge + label + state badge
             Row(
               children: [
                 _priorityBadge(priority),
-                const SizedBox(width: 8),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Text(
                     label,
                     style: GoogleFonts.outfit(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: colors.textPrimary,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
                     ),
                   ),
                 ),
                 _stateBadge(state, colors),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 14),
 
-            // Row 2: message + value info
+            // Message
             Text(
               message,
-              style: GoogleFonts.outfit(fontSize: 12, color: colors.textSecondary),
+              style: GoogleFonts.outfit(
+                  fontSize: 20, color: Colors.white70),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 14),
 
-            // Row 3: device, value, threshold, time
+            // Device + value + threshold + time row
             Wrap(
-              spacing: 8,
-              runSpacing: 4,
+              spacing: 24,
+              runSpacing: 10,
               children: [
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.memory_rounded, size: 12, color: colors.textSecondary),
-                    const SizedBox(width: 4),
-                    Text(device, style: GoogleFonts.dmMono(fontSize: 11, color: colors.textSecondary)),
+                    Icon(Icons.memory_rounded,
+                        size: 22, color: Colors.white60),
+                    const SizedBox(width: 8),
+                    Text(device,
+                        style: GoogleFonts.dmMono(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: colors.accent)),
                   ],
                 ),
                 if (value != null && threshold != null)
                   Text(
                     'Value: ${_fmt(value)} / Threshold: ${_fmt(threshold)}',
-                    style: GoogleFonts.dmMono(fontSize: 10, color: prioColor),
+                    style: GoogleFonts.dmMono(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        color: prioColor),
                   ),
                 Text(formattedTime,
-                    style: GoogleFonts.dmMono(fontSize: 10, color: colors.textSecondary)),
+                    style: GoogleFonts.dmMono(
+                        fontSize: 18, color: Colors.white54)),
               ],
             ),
 
             // Ack info
             if (ackedBy != null) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: 12),
               Text(
                 'Acknowledged by $ackedBy at ${_fmtTime(ackedAt)}',
-                style: GoogleFonts.outfit(fontSize: 11, color: Colors.green.shade300),
+                style: GoogleFonts.outfit(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.green.shade300),
               ),
             ],
 
             // Shelve info
             if (shelvedBy != null) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: 12),
               Text(
                 'Shelved by $shelvedBy until ${_fmtTime(shelvedUntil)}',
-                style: GoogleFonts.outfit(fontSize: 11, color: Colors.orange.shade300),
+                style: GoogleFonts.outfit(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.orange.shade300),
               ),
             ],
 
             // Actions
             if (widget.canManage && state == 'active') ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 18),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton.icon(
                     onPressed: () => _ackAlarm(id),
-                    icon: const Icon(Icons.check_circle_outline, size: 16),
-                    label: const Text('Acknowledge'),
+                    icon: const Icon(Icons.check_circle_outline, size: 28),
+                    label: Text('Acknowledge',
+                        style: GoogleFonts.outfit(
+                            fontSize: 20, fontWeight: FontWeight.w600)),
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.green.shade300,
-                      textStyle: GoogleFonts.outfit(fontSize: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 14),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 16),
                   TextButton.icon(
                     onPressed: () => _shelveAlarm(id),
-                    icon: const Icon(Icons.snooze_rounded, size: 16),
-                    label: const Text('Shelve'),
+                    icon: const Icon(Icons.snooze_rounded, size: 28),
+                    label: Text('Shelve',
+                        style: GoogleFonts.outfit(
+                            fontSize: 20, fontWeight: FontWeight.w600)),
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.orange.shade300,
-                      textStyle: GoogleFonts.outfit(fontSize: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 14),
                     ),
                   ),
                 ],
@@ -428,17 +485,18 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
     final color = _priorityColor(priority);
     final label = _priorityLabels[priority] ?? 'Info';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         label.toUpperCase(),
         style: GoogleFonts.dmMono(
-          fontSize: 9,
+          fontSize: 17,
           fontWeight: FontWeight.w700,
           color: color,
+          letterSpacing: 0.5,
         ),
       ),
     );
@@ -453,14 +511,18 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
       _ => colors.textSecondary,
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
         color: stateColor.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         state.toUpperCase(),
-        style: GoogleFonts.dmMono(fontSize: 9, fontWeight: FontWeight.w600, color: stateColor),
+        style: GoogleFonts.dmMono(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: stateColor,
+            letterSpacing: 0.5),
       ),
     );
   }
