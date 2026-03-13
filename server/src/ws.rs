@@ -78,9 +78,18 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let mut rx = state.tx.subscribe();
 
     let mut send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            if sender.send(Message::Text(msg.into())).await.is_err() {
-                break;
+        loop {
+            match rx.recv().await {
+                Ok(msg) => {
+                    if sender.send(Message::Text(msg.into())).await.is_err() {
+                        break;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    warn!("WebSocket receiver lagged, skipped {} messages", n);
+                    continue; // recover — keep receiving
+                }
+                Err(_) => break, // channel closed
             }
         }
     });

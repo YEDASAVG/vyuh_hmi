@@ -30,11 +30,16 @@ pub struct OpcUaClient {
     /// Cached register values from OPC UA subscription (address → value).
     /// Updated by the DataChangeCallback on the session's event loop thread.
     sub_cache: Arc<StdMutex<HashMap<u32, u16>>>,
+    /// Counter incremented by the subscription callback on each delivery.
+    /// Used to detect a stale/dead subscription.
+    sub_update_count: Arc<StdMutex<u64>>,
+    /// Value of `sub_update_count` at our last successful cache read.
+    last_read_count: u64,
     /// Whether a subscription is actively delivering data.
     sub_active: bool,
-    /// Number of consecutive reads where the subscription cache was empty.
+    /// Number of consecutive reads where the subscription produced no new data.
     /// If this exceeds the threshold, we fall back to polling.
-    sub_empty_reads: u32,
+    sub_stale_reads: u32,
 }
 
 impl OpcUaClient {
@@ -44,8 +49,10 @@ impl OpcUaClient {
             session: None,
             _keepalive: None,
             sub_cache: Arc::new(StdMutex::new(HashMap::new())),
+            sub_update_count: Arc::new(StdMutex::new(0)),
+            last_read_count: 0,
             sub_active: false,
-            sub_empty_reads: 0,
+            sub_stale_reads: 0,
         }
     }
 }
@@ -55,11 +62,16 @@ impl PlcProtocol for OpcUaClient {
     async fn connect(&mut self) -> Result<(), String> {
         let url = self.url.clone();
         let sub_cache = self.sub_cache.clone();
+        let sub_update_count = self.sub_update_count.clone();
 
-        // Clear stale subscription cache
+        // Clear stale subscription cache and counter
         if let Ok(mut cache) = sub_cache.lock() {
             cache.clear();
         }
+        if let Ok(mut count) = sub_update_count.lock() {
+            *count = 0;
+        }
+        self.last_read_count = 0;
 
         // connect_to_endpoint is blocking — run on blocking thread pool
         let (session, keepalive, sub_active) = tokio::task::spawn_blocking(move || {
@@ -102,7 +114,7 @@ impl PlcProtocol for OpcUaClient {
             // If it fails, we fall back to regular polling (existing behavior).
             let sub_active = {
                 let session_guard = session.read();
-                match create_data_subscription(&*session_guard, sub_cache) {
+                match create_data_subscription(&*session_guard, sub_cache, sub_update_count) {
                     Ok(()) => {
                         eprintln!("[opcua] Subscription created — push mode active");
                         true
@@ -130,30 +142,33 @@ impl PlcProtocol for OpcUaClient {
         self.session = Some(session);
         self._keepalive = Some(keepalive);
         self.sub_active = sub_active;
-        self.sub_empty_reads = 0;
+        self.sub_stale_reads = 0;
         Ok(())
     }
 
     async fn read_registers(&mut self, start: u16, count: u16) -> Result<Vec<u16>, String> {
-        // Subscription mode: return from cache if it has data.
-        // If the cache stays empty for too many reads, the subscription
-        // callback is probably not firing — demote to polling mode.
+        // Subscription mode: return from cache if the callback is still
+        // delivering fresh data. We compare an atomic update counter that the
+        // callback increments on every delivery—if it hasn't changed since our
+        // last read, the subscription has gone stale and we fall back to polling.
         if self.sub_active {
-            if let Ok(cache) = self.sub_cache.lock() {
-                let has_data = cache.values().any(|&v| v != 0);
-                if has_data {
-                    self.sub_empty_reads = 0;
+            let current_count = self.sub_update_count.lock().map(|c| *c).unwrap_or(0);
+            if current_count > self.last_read_count {
+                // Subscription is alive — return cached values.
+                self.last_read_count = current_count;
+                self.sub_stale_reads = 0;
+                if let Ok(cache) = self.sub_cache.lock() {
                     return Ok((start..start + count)
                         .map(|reg| *cache.get(&(reg as u32)).unwrap_or(&0))
                         .collect());
                 }
             }
-            // Cache is still empty — count consecutive misses
-            self.sub_empty_reads += 1;
-            if self.sub_empty_reads > 5 {
+            // Subscription hasn't delivered since our last read.
+            self.sub_stale_reads += 1;
+            if self.sub_stale_reads > 5 {
                 tracing::warn!(
-                    "OPC UA subscription produced no data after {} reads — falling back to polling",
-                    self.sub_empty_reads
+                    "OPC UA subscription stale for {} consecutive reads — falling back to polling",
+                    self.sub_stale_reads
                 );
                 self.sub_active = false;
             }
@@ -278,6 +293,7 @@ fn variant_to_u16(value: &Option<Variant>) -> u16 {
 fn create_data_subscription(
     session: &Session,
     cache: Arc<StdMutex<HashMap<u32, u16>>>,
+    update_count: Arc<StdMutex<u64>>,
 ) -> Result<(), String> {
     let subscription_id = session
         .create_subscription(
@@ -288,15 +304,19 @@ fn create_data_subscription(
             0,      // priority
             true,   // publishing enabled
             DataChangeCallback::new(move |items| {
-                if let Ok(mut cache) = cache.lock() {
-                    for item in items.iter() {
-                        let handle = item.client_handle();
-                        let val = variant_to_u16(&item.last_value().value);
-                        cache.insert(handle, val);
+                if !items.is_empty() {
+                    if let Ok(mut cache) = cache.lock() {
+                        for item in items.iter() {
+                            let handle = item.client_handle();
+                            let val = variant_to_u16(&item.last_value().value);
+                            cache.insert(handle, val);
+                        }
                     }
-                    if !items.is_empty() {
-                        eprintln!("[opcua] Subscription data: {} items updated", items.len());
+                    // Bump the counter so read_registers() knows data is fresh.
+                    if let Ok(mut count) = update_count.lock() {
+                        *count += 1;
                     }
+                    eprintln!("[opcua] Subscription data: {} items updated", items.len());
                 }
             }),
         )

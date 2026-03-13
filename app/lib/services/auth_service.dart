@@ -206,6 +206,15 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clear saved session locally without contacting the server.
+  /// Used when the server rejects the token (e.g. after server restart).
+  Future<void> clearSavedSession() async {
+    _currentUser = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_user');
+    notifyListeners();
+  }
+
   /// Electronic signature — re-authenticate for critical actions.
   Future<bool> verifyESignature({
     required String username,

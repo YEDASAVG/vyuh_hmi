@@ -18,6 +18,7 @@ class WebSocketService {
   StreamSubscription? _subscription;
   Timer? _reconnectTimer;
   bool _disposed = false;
+  bool _authFailed = false;
 
   final _controller = StreamController<PlcData>.broadcast();
 
@@ -30,6 +31,10 @@ class WebSocketService {
   /// Callback when connection state changes.
   void Function(bool connected)? onConnectionChanged;
 
+  /// Called when the server rejects auth (session_revoked / auth_failed).
+  /// The app should respond by forcing re-login.
+  void Function()? onAuthFailed;
+
   WebSocketService({
     this.url = 'ws://127.0.0.1:3000/ws',
     this.reconnectDelay = const Duration(seconds: 3),
@@ -37,15 +42,21 @@ class WebSocketService {
   });
 
   /// Set auth token (called after login).
-  void setAuthToken(String? token) => authToken = token;
+  void setAuthToken(String? token) {
+    authToken = token;
+    _authFailed = false; // new token — allow reconnect
+  }
 
   /// Start the connection.
   void connect() {
     if (_disposed) return;
+    _authFailed = false;
     _doConnect();
   }
 
   Future<void> _doConnect() async {
+    if (_authFailed || _disposed) return;
+
     try {
       // Connect without token in URL — auth via first message
       final wsUri = Uri.parse(url);
@@ -59,8 +70,6 @@ class WebSocketService {
         _channel!.sink.add(authToken!);
       }
 
-      onConnectionChanged?.call(true);
-
       _subscription = _channel!.stream.listen(
         (raw) {
           try {
@@ -68,11 +77,15 @@ class WebSocketService {
 
             // Handle auth response from server
             if (json.containsKey('auth') && json['auth'] == 'ok') {
-              return; // skip — it's the auth acknowledgement
+              onConnectionChanged?.call(true);
+              return;
             }
             if (json.containsKey('error')) {
-              // Auth failed — disconnect and retry
-              _handleDisconnect();
+              // Auth rejected — stop reconnect loop, notify app
+              _authFailed = true;
+              _closeChannel();
+              onConnectionChanged?.call(false);
+              onAuthFailed?.call();
               return;
             }
 
@@ -94,13 +107,18 @@ class WebSocketService {
     }
   }
 
-  void _handleDisconnect() {
+  void _closeChannel() {
+    _channel?.sink.close();
     _channel = null;
     _subscription?.cancel();
     _subscription = null;
+  }
+
+  void _handleDisconnect() {
+    _closeChannel();
     onConnectionChanged?.call(false);
 
-    if (!_disposed) {
+    if (!_disposed && !_authFailed) {
       _reconnectTimer?.cancel();
       _reconnectTimer = Timer(reconnectDelay, _doConnect);
     }

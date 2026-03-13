@@ -83,6 +83,7 @@ class _HmiAppState extends State<HmiApp> {
       if (wasAuthenticated) {
         store.api.setAuthToken(authService.currentUser?.token);
         store.ws.setAuthToken(authService.currentUser?.token);
+        store.ws.onAuthFailed = _onWsAuthFailed;
         store.init();
       }
 
@@ -114,6 +115,7 @@ class _HmiAppState extends State<HmiApp> {
     final token = _authService?.currentUser?.token;
     store.api.setAuthToken(token);
     store.ws.setAuthToken(token);
+    store.ws.onAuthFailed = _onWsAuthFailed;
     store.init();
 
     setState(() {
@@ -129,6 +131,19 @@ class _HmiAppState extends State<HmiApp> {
       _isAuthenticated = false;
       _currentIndex = 0;
     });
+  }
+
+  /// Called when the server rejects the WebSocket auth token
+  /// (e.g. server restarted, session cleared). Force re-login.
+  void _onWsAuthFailed() {
+    _authService?.clearSavedSession();
+    _store?.dispose();
+    if (mounted) {
+      setState(() {
+        _isAuthenticated = false;
+        _currentIndex = 0;
+      });
+    }
   }
 
   @override
