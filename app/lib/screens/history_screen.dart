@@ -334,7 +334,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           Text(
                             dev.name,
                             style: GoogleFonts.outfit(
-                              fontSize: 15,
+                              fontSize: 18,
                               fontWeight: isActive
                                   ? FontWeight.w600
                                   : FontWeight.w400,
@@ -368,7 +368,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     Text(
                       '${_snapshots.length} pts · ${_intervalSec}s avg',
                       style: GoogleFonts.dmMono(
-                          fontSize: 14,
+                          fontSize: 17,
                           fontWeight: FontWeight.w600,
                           color: colors.accent),
                     ),
@@ -453,7 +453,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             const SizedBox(height: 8),
             Text(_error!,
                 style: GoogleFonts.outfit(
-                    fontSize: 14, color: colors.textMuted),
+                    fontSize: 18, color: colors.textMuted),
                 textAlign: TextAlign.center),
             const SizedBox(height: 20),
             TextButton(
@@ -629,14 +629,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 56,
+                      reservedSize: 70,
                       interval: (maxY - minY) / 4,
                       getTitlesWidget: (value, meta) => Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: Text(
                           value.toStringAsFixed(0),
                           style: GoogleFonts.dmMono(
-                              fontSize: 14,
+                              fontSize: 18,
                               color: Colors.white60),
                           textAlign: TextAlign.right,
                         ),
@@ -646,7 +646,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 28,
+                      reservedSize: 34,
                       interval: labelInterval,
                       getTitlesWidget: (value, meta) {
                         final idx = value.toInt();
@@ -657,7 +657,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           DateFormat('HH:mm').format(
                               _snapshots[idx].time.toLocal()),
                           style: GoogleFonts.dmMono(
-                              fontSize: 14,
+                              fontSize: 18,
                               color: Colors.white60),
                         );
                       },

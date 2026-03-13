@@ -117,7 +117,7 @@ class PlcDetailScreen extends StatelessWidget {
           Text(
             connected ? 'ONLINE' : 'OFFLINE',
             style: GoogleFonts.dmMono(
-              fontSize: 16,
+              fontSize: 18,
               fontWeight: FontWeight.w700,
               color: c,
             ),
@@ -168,7 +168,7 @@ class PlcDetailScreen extends StatelessWidget {
             Text(
               protocol,
               style: GoogleFonts.dmMono(
-                fontSize: 14,
+                fontSize: 17,
                 fontWeight: FontWeight.w600,
                 color: Colors.white54,
               ),
@@ -517,7 +517,7 @@ class _WriteRegisterTileState extends State<_WriteRegisterTile> {
               Text(
                 'REG ${widget.address}',
                 style: GoogleFonts.dmMono(
-                  fontSize: 13,
+                  fontSize: 16,
                   color: Colors.white54,
                 ),
               ),
@@ -560,7 +560,7 @@ class _WriteRegisterTileState extends State<_WriteRegisterTile> {
                           horizontal: 10, vertical: 8),
                       hintText: 'Value',
                       hintStyle: GoogleFonts.dmMono(
-                        fontSize: 14,
+                        fontSize: 17,
                         color: Colors.white38,
                       ),
                       border: OutlineInputBorder(

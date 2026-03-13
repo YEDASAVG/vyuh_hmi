@@ -108,7 +108,7 @@ class LiveLineChart extends StatelessWidget {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 60,
+                      reservedSize: 70,
                       interval: (maxY - minY) / 4,
                       getTitlesWidget: (value, meta) {
                         if (value == meta.max || value == meta.min) {
@@ -119,8 +119,8 @@ class LiveLineChart extends StatelessWidget {
                           child: Text(
                             value.toStringAsFixed(value.abs() < 10 ? 1 : 0),
                             style: GoogleFonts.dmMono(
-                              fontSize: 14,
-                              color: HmiColors.textMuted,
+                              fontSize: 18,
+                              color: Colors.white70,
                             ),
                           ),
                         );

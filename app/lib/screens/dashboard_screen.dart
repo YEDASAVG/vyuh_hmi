@@ -222,7 +222,7 @@ class DashboardScreen extends StatelessWidget {
               store.lastWriteError!,
               style: TextStyle(
                 color: colors.danger,
-                fontSize: 12,
+                fontSize: 16,
                 fontFamily: 'DM Mono',
               ),
               maxLines: 2,
@@ -392,7 +392,7 @@ class _RestartBatchButton extends StatelessWidget {
               'RESTART BATCH',
               style: TextStyle(
                 color: colors.healthy,
-                fontSize: 18,
+                fontSize: 24,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -401,7 +401,7 @@ class _RestartBatchButton extends StatelessWidget {
         content: Text(
           'This will clear the emergency stop and allow the batch process to resume from IDLE.\n\n'
           'The reactor will begin a new heating cycle.',
-          style: TextStyle(color: colors.textSecondary, fontSize: 13),
+          style: TextStyle(color: colors.textSecondary, fontSize: 18),
         ),
         actions: [
           TextButton(
@@ -873,7 +873,7 @@ class _BrandingBar extends StatelessWidget {
           Text(
             allGood ? 'ONLINE' : 'OFFLINE',
             style: GoogleFonts.dmMono(
-              fontSize: 14,
+              fontSize: 17,
               fontWeight: FontWeight.w600,
               color: allGood ? colors.healthy : colors.danger,
               letterSpacing: 1.5,
@@ -894,7 +894,7 @@ class _BrandingBar extends StatelessWidget {
               child: Text(
                 active.protocol.toUpperCase(),
                 style: GoogleFonts.jetBrainsMono(
-                  fontSize: 12,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: active.protocol == 'opcua'
                       ? const Color(0xFF26A69A)
@@ -922,7 +922,7 @@ class _BrandingBar extends StatelessWidget {
           Text(
             '$count',
             style: GoogleFonts.dmMono(
-              fontSize: 14,
+              fontSize: 17,
               fontWeight: FontWeight.w700,
               color: color,
             ),
@@ -931,7 +931,7 @@ class _BrandingBar extends StatelessWidget {
           Text(
             label,
             style: GoogleFonts.dmMono(
-              fontSize: 12,
+              fontSize: 15,
               fontWeight: FontWeight.w600,
               color: color.withValues(alpha: 0.7),
             ),
@@ -977,7 +977,7 @@ class _OfflineBanner extends StatelessWidget {
             Text(
               deviceName.toUpperCase(),
               style: GoogleFonts.jetBrainsMono(
-                fontSize: 12,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: Colors.red.withValues(alpha: 0.8),
                 letterSpacing: 2,
@@ -997,7 +997,7 @@ class _OfflineBanner extends StatelessWidget {
             Text(
               'Live data is paused. Last known values are shown.',
               style: GoogleFonts.outfit(
-                fontSize: 13,
+                fontSize: 17,
                 color: Colors.white54,
               ),
             ),
@@ -1014,7 +1014,7 @@ class _OfflineBanner extends StatelessWidget {
                 label: Text(
                   'GO TO DEVICES',
                   style: GoogleFonts.outfit(
-                    fontSize: 13,
+                    fontSize: 17,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1,
                   ),

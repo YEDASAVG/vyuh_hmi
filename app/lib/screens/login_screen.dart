@@ -163,7 +163,7 @@ class _LoginScreenState extends State<LoginScreen>
                 Text(
                   'Pharma Plant Monitoring & Control',
                   style: GoogleFonts.outfit(
-                    fontSize: 15,
+                    fontSize: 19,
                     fontWeight: FontWeight.w400,
                     color: Colors.white54,
                   ),
@@ -201,11 +201,11 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _featureLine(IconData icon, String text) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: const Color(0xFF3B82F6).withValues(alpha: 0.7)),
+        Icon(icon, size: 22, color: const Color(0xFF3B82F6).withValues(alpha: 0.7)),
         const SizedBox(width: 10),
         Text(
           text,
-          style: GoogleFonts.outfit(fontSize: 14, color: Colors.white60),
+          style: GoogleFonts.outfit(fontSize: 18, color: Colors.white60),
         ),
       ],
     );
@@ -217,7 +217,7 @@ class _LoginScreenState extends State<LoginScreen>
         Text(
           'Vyuh HMI',
           style: GoogleFonts.outfit(
-            fontSize: 28,
+            fontSize: 36,
             fontWeight: FontWeight.w700,
             color: Colors.white,
             letterSpacing: 1.5,
@@ -227,7 +227,7 @@ class _LoginScreenState extends State<LoginScreen>
         Text(
           'Pharma Plant Monitoring & Control',
           style: GoogleFonts.outfit(
-            fontSize: 13,
+            fontSize: 17,
             fontWeight: FontWeight.w400,
             color: Colors.white54,
           ),
@@ -262,7 +262,7 @@ class _LoginScreenState extends State<LoginScreen>
             Text(
               'Sign In',
               style: GoogleFonts.outfit(
-                fontSize: 20,
+                fontSize: 28,
                 fontWeight: FontWeight.w600,
                 color: Colors.white,
               ),
@@ -271,7 +271,7 @@ class _LoginScreenState extends State<LoginScreen>
             Text(
               '21 CFR Part 11 Compliant Access',
               style: GoogleFonts.outfit(
-                fontSize: 12,
+                fontSize: 16,
                 color: Colors.white38,
               ),
             ),
@@ -323,13 +323,13 @@ class _LoginScreenState extends State<LoginScreen>
                 child: Row(
                   children: [
                     const Icon(Icons.error_outline,
-                        color: Colors.redAccent, size: 18),
+                        color: Colors.redAccent, size: 22),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _error!,
                         style: GoogleFonts.outfit(
-                          fontSize: 13,
+                          fontSize: 16,
                           color: Colors.redAccent,
                         ),
                       ),
@@ -338,7 +338,7 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
               ),
             SizedBox(
-              height: 48,
+              height: 54,
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _handleLogin,
                 style: ElevatedButton.styleFrom(
@@ -361,7 +361,7 @@ class _LoginScreenState extends State<LoginScreen>
                     : Text(
                         'Sign In',
                         style: GoogleFonts.outfit(
-                          fontSize: 15,
+                          fontSize: 19,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -388,7 +388,7 @@ class _LoginScreenState extends State<LoginScreen>
           Text(
             'Default Accounts',
             style: GoogleFonts.outfit(
-              fontSize: 12,
+              fontSize: 16,
               fontWeight: FontWeight.w600,
               color: Colors.amber,
             ),
@@ -406,7 +406,7 @@ class _LoginScreenState extends State<LoginScreen>
     return Text(
       'Vyuh HMI v1.0 — 21 CFR Part 11',
       style: GoogleFonts.outfit(
-        fontSize: 11,
+        fontSize: 14,
         color: Colors.white24,
       ),
     );
@@ -414,8 +414,8 @@ class _LoginScreenState extends State<LoginScreen>
 
   Widget _buildLogo(ThemeData theme) {
     return Container(
-      width: 72,
-      height: 72,
+      width: 90,
+      height: 90,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: const LinearGradient(
@@ -434,7 +434,7 @@ class _LoginScreenState extends State<LoginScreen>
       child: const Icon(
         Icons.precision_manufacturing_rounded,
         color: Colors.white,
-        size: 36,
+        size: 46,
       ),
     );
   }
@@ -454,16 +454,16 @@ class _LoginScreenState extends State<LoginScreen>
       validator: validator,
       onFieldSubmitted: onFieldSubmitted,
       style: GoogleFonts.outfit(
-        fontSize: 14,
+        fontSize: 18,
         color: Colors.white,
       ),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.outfit(
-          fontSize: 13,
+          fontSize: 17,
           color: Colors.white38,
         ),
-        prefixIcon: Icon(icon, color: Colors.white38, size: 20),
+        prefixIcon: Icon(icon, color: Colors.white38, size: 24),
         suffixIcon: suffix,
         filled: true,
         fillColor: Colors.white.withValues(alpha: 0.05),
@@ -507,7 +507,7 @@ class _LoginScreenState extends State<LoginScreen>
           Text(
             '$user / $pass',
             style: GoogleFonts.dmMono(
-              fontSize: 11,
+              fontSize: 14,
               color: Colors.white54,
             ),
           ),
@@ -521,7 +521,7 @@ class _LoginScreenState extends State<LoginScreen>
             child: Text(
               role,
               style: GoogleFonts.dmMono(
-                fontSize: 9,
+                fontSize: 12,
                 fontWeight: FontWeight.w500,
                 color: _roleColor(role),
               ),

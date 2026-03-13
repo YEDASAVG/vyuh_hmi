@@ -282,7 +282,7 @@ class _HmiAppState extends State<HmiApp> {
                     ),
                   ),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -326,16 +326,16 @@ class _HmiAppState extends State<HmiApp> {
       onTap: () => setState(() => _currentIndex = index),
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 22, color: color),
-            const SizedBox(height: 4),
+            Icon(icon, size: 28, color: color),
+            const SizedBox(height: 5),
             Text(
               label,
               style: GoogleFonts.outfit(
-                fontSize: 11,
+                fontSize: 15,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 color: color,
               ),
