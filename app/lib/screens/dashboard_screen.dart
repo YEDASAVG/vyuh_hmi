@@ -568,16 +568,18 @@ class _SetpointSliderState extends State<_SetpointSlider> {
           const Spacer(),
           Row(
             children: [
-              Text(
-                'SET: $pending ${sp.unit}',
-                style: TextStyle(
-                  color: colors.accent,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'DM Mono',
+              Expanded(
+                child: Text(
+                  'SET: $pending ${sp.unit}',
+                  style: TextStyle(
+                    color: colors.accent,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'DM Mono',
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const Spacer(),
               SizedBox(
                 height: 46,
                 child: TextButton(

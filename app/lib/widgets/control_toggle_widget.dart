@@ -263,16 +263,19 @@ class EmergencyStopButton extends StatelessWidget {
               else
                 const Icon(Icons.dangerous_rounded, color: HmiColors.danger, size: 56),
               const SizedBox(height: 12),
-              const Text(
-                'EMERGENCY\nSTOP',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: HmiColors.danger,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'DM Mono',
-                  letterSpacing: 2,
-                  height: 1.3,
+              const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'EMERGENCY\nSTOP',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: HmiColors.danger,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'DM Mono',
+                    letterSpacing: 2,
+                    height: 1.3,
+                  ),
                 ),
               ),
             ],

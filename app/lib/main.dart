@@ -267,8 +267,17 @@ class _HmiAppState extends State<HmiApp> {
                 AuditTrailScreen(authService: authService),
               ];
 
-              // ── Bottom Menu Bar (no sidebar — matches HMI wireframe) ──
-              return Scaffold(
+              // ── Scale-to-fit for iPad / smaller displays ──
+              // Render at 1920-wide design size and let the device
+              // physically scale it down. On 2K+ displays this is a
+              // no-op because the content already fits.
+              // Design height is computed to match the device's actual
+              // aspect ratio (after SafeArea insets) so there's no
+              // blank strip at the bottom.
+              const designWidth = 1920.0;
+              final needsScaling = constraints.maxWidth < designWidth;
+
+              Widget scaffold = Scaffold(
                 body: IndexedStack(
                   index: _currentIndex,
                   children: screens,
@@ -309,6 +318,38 @@ class _HmiAppState extends State<HmiApp> {
                   ),
                 ),
               );
+
+              if (!needsScaling) return scaffold;
+
+              // On iPad / smaller screens: render at design size,
+              // then scale the entire UI to fit the physical screen.
+              // SafeArea keeps content below the iOS status bar.
+              final safePadding = MediaQuery.of(context).padding;
+              final safeHeight = constraints.maxHeight -
+                  safePadding.top -
+                  safePadding.bottom;
+              final designHeight =
+                  designWidth * safeHeight / constraints.maxWidth;
+
+              return ColoredBox(
+                color: config.theme.background,
+                child: SafeArea(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: designWidth,
+                      height: designHeight,
+                      child: MediaQuery(
+                        data: MediaQuery.of(context).copyWith(
+                          size: Size(designWidth, designHeight),
+                        ),
+                        child: scaffold,
+                      ),
+                    ),
+                  ),
+                ),
+              );
             },
           ),
         ),
@@ -321,7 +362,7 @@ class _HmiAppState extends State<HmiApp> {
       DashboardConfig config, int index, IconData icon, String label) {
     final isSelected = _currentIndex == index;
     final color =
-        isSelected ? config.theme.accent : config.theme.textMuted;
+        isSelected ? config.theme.accent : config.theme.textPrimary.withValues(alpha: 0.6);
     return InkWell(
       onTap: () => setState(() => _currentIndex = index),
       borderRadius: BorderRadius.circular(8),
